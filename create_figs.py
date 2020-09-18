@@ -68,10 +68,12 @@ def gpx_from_plt(plt_path, name=None, skip_lines=6, fmt_str='%Y-%m-%d %H:%S:%M')
     return gpx
 
 def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unknown', zoom=16, size=(256, 256), max_distance=5, render_map=geotiler.render_map):
-    origin=str(gpx_file)
-    delete_q = model.__table__.delete().where(model.origin==origin and model.show_route==show_route and model.zoom==zoom)
+    width, height = size
+    origin = str(gpx_file)
+    delete_q = model.__table__.delete().where(model.origin==origin and model.show_route==show_route and model.zoom==zoom and model.width == width and model.height==height)
     dbsession.execute(delete_q)
     dbsession.commit()
+
     gpx = gpxpy.parse(gpx_file.open())
     raw_points = gpx.tracks[0].segments[0].points
     points = simplify_polyline(raw_points, max_distance=5)
@@ -97,17 +99,15 @@ def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unkn
         p_0_long, p_0_lat, p_1_long, p_1_lat = mm.extent
         if raw_points is not None and show_route:
             p_0_long, p_0_lat, p_1_long, p_1_lat = mm.extent
-            p_0_long_shrunk, p_1_long_shrunk = shrink_fov(p_0_long, p_1_long)
-            p_0_lat_shrunk, p_1_lat_shrunk = shrink_fov(p_0_lat, p_1_lat)
-            idx_lat = np.logical_and(p_0_lat_shrunk <= raw_points_lat, p_1_lat_shrunk >= raw_points_lat)
-            idx_long = np.logical_and(p_0_long_shrunk <= raw_points_long, p_1_long_shrunk >= raw_points_long)
+            idx_lat = np.logical_and(p_0_lat <= raw_points_lat, p_1_lat >= raw_points_lat)
+            idx_long = np.logical_and(p_0_long <= raw_points_long, p_1_long >= raw_points_long)
             idx = np.logical_and(idx_lat, idx_long)
             selected_lat, selected_long = raw_points_lat[idx], raw_points_long[idx]
             track = np.array([mm.rev_geocode(p) for p in zip(selected_long, selected_lat)])
             if len(track.shape) > 1:
                 ax.plot(track[:, 0], track[:, 1], 'r-', alpha=1.0, lw=10, ms=10)
         buf = io.BytesIO()
-        fig.savefig(buf, format='png', bbox_inches='tight')
+        fig.savefig(buf, format='png')
         buf.seek(0)
         new_entry = model(origin=str(gpx_file),
                           zoom=zoom,
@@ -116,6 +116,8 @@ def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unkn
                           p_0_long=p_0_long,
                           p_1_lat=p_1_lat,
                           p_1_long=p_1_long,
+                          width=width,
+                          height=height,
                           show_route=show_route,
                           route_type=route_type,
                           image=buf.read())
@@ -133,13 +135,13 @@ def shrink_fov(p_low, p_high, factor=0.95):
 if __name__ == '__main__':
     from model import OSMImages, ENGINE
     from sqlalchemy.orm import sessionmaker
-
     Session = sessionmaker(bind=ENGINE)
     session = Session()
+    
     client = redis.Redis('localhost')
     downloader = redis_downloader(client)
     render_map = functools.partial(geotiler.render_map, downloader=downloader)
-    in_dir = pathlib.Path('/home/mathis/Projects/gpx_similarity/geo_life_1.3_gpx')
-    for i, p in enumerate(in_dir.glob('*bike.gpx')):
+    in_dir = pathlib.Path('/home/mathis/Projects/gpx_similarity/gpx_recorded/')
+    for i, p in enumerate(in_dir.glob('*.gpx')):
         print(p)
         create_imgages(session, OSMImages, p, route_type='bike', show_route=False, render_map=render_map)
