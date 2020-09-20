@@ -27,18 +27,18 @@ def drop_database(database_name):
     cursor.execute(sqlCreateDatabase)
 
 
-def create_database(database_name):
+def create_database(database_name, user, password, host, port):
     import psycopg2
     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
-    con = psycopg2.connect(user=PGUSER, password=PGPASS, host=PGHOST, port=PGPORT)
+    con = psycopg2.connect(user=user, password=password, host=host, port=port)
     con.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
     cursor  = con.cursor()
     sqlCreateDatabase = f"create database {database_name};"
     cursor.execute(sqlCreateDatabase)
 
-def get_engine_and_model(database_name, table_name='osm_images'):
-    uri = f'postgresql+psycopg2://{PGUSER}:{PGPASS}@{PGHOST}:{PGPORT}/{database_name}'
+def get_engine_and_model(database_name, user, password, host, port, table_name='osm_images'):
+    uri = f'postgresql+psycopg2://{user}:{password}@{host}:{port}/{database_name}'
     engine = create_engine(uri)
 
     base = declarative_base()
@@ -66,7 +66,7 @@ def get_engine_and_model(database_name, table_name='osm_images'):
     try:
         create_models()
     except OperationalError:
-        create_database(database_name)
+        create_database(database_name, user, password, host, port)
         create_models()
 
     return engine, OSMImages

@@ -4,6 +4,7 @@ import datetime
 import functools
 import io
 
+import click
 import pandas as pd
 import numpy as np
 from scipy.interpolate import interp1d
@@ -17,6 +18,10 @@ from geotiler.cache import redis_downloader
 import redis
 
 from matplotlib import pyplot as plt
+from sqlalchemy.orm import sessionmaker
+
+
+from .model import get_engine_and_model
 
 
 def points2array(points):
@@ -113,23 +118,48 @@ def shrink_fov(p_low, p_high, factor=0.95):
     offset = (p_high - p_low) / 2.
     return mid - (offset * factor), mid + (offset * factor)
     
-    
-if __name__ == '__main__':
-    from model import get_engine_and_model
-    from sqlalchemy.orm import sessionmaker
-    database_name = 'gpx_similarity'
-    engine, OSMImages = get_engine_and_model(database_name)
+
+def add_train_files(config, in_files, dataset_name, default_route_type, extract_route_type):
+
+    engine, OSMImages = get_engine_and_model(**config['postgres'])
     Session = sessionmaker(bind=engine)
     session = Session()
-    
-    client = redis.Redis('localhost')
+
+    client = redis.Redis(**config['redis'])
     downloader = redis_downloader(client)
     render_map = functools.partial(geotiler.render_map, downloader=downloader)
-    #in_dir = pathlib.Path('./gpx_recorded/')
-    #for i, p in enumerate(in_dir.glob('*.gpx')):
-    #    print(p)
-    #    create_imgages(session, OSMImages, p, route_type='bike', show_route=False, render_map=render_map, dataset='komoot')
-    in_dir = pathlib.Path('./geo_life_1.3_gpx/')
-    for i, p in enumerate(in_dir.glob('*bike.gpx')):
-        print(p.name.split('_')[-1].split('.')[0])
-        create_imgages(session, OSMImages, p, route_type='bike', show_route=False, render_map=render_map, dataset='geolife')
+
+    in_files_prepared = []
+    for p in in_files:
+        p = pathlib.Path(p)
+        if extract_route_type:
+            try:
+                route_type = p.name.split('_')[-1].split('.')[0]
+            except:
+                route_type = default_route_type
+            else:
+                if route_type == '':
+                    route_type = default_route_type
+        else:
+            route_type = default_route_type
+        in_files_prepared.append((p, route_type))
+
+    def show_item(item):
+        if item is not None:
+            return '{} [type: {}]'.format(str(item[0]), item[1])
+        else:
+            return ''
+
+    opts = config['map_options']
+    with click.progressbar(in_files_prepared, item_show_func=show_item, show_pos=True) as bar:
+        for (path, route_type) in bar:
+            create_imgages(session,
+                           OSMImages,
+                           path,
+                           route_type=route_type,
+                           render_map=render_map,
+                           show_route=bool(opts['show_route']),
+                           zoom=opts['zoom'],
+                           size=(opts['width'], opts['width']),
+                           max_distance=opts['smoothing_dist'],
+                           dataset=dataset_name)
