@@ -24,10 +24,11 @@ def train(config):
     
     opts = config['train']
 
-    query = session.query(OSMImages).filter(and_(OSMImages.route_type == 'bike'))
+    query = session.query(OSMImages).filter(and_(OSMImages.route_type == 'bike', OSMImages.dataset == 'komoot'))
     click.echo('\n'.join(['Options for training:'] + [f'-{k}: {v}' for k, v in opts.items()]))
 
     model = Autoencoder(width=config['map_options']['width'], height=config['map_options']['height'])
+    #model.save_weights(f'geolife_bike_train/trained_models/model_epoch_{"0".zfill(3)}.h5', overwrite=True)
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=opts['learning_rate'])
     mse_loss_fn = tf.keras.losses.MeanSquaredError()
@@ -40,6 +41,7 @@ def train(config):
         click.echo(f"Start of epoch {epoch+1}/{opts['epochs']}")
         generator_train, entries_train = generator_from_query(query,
                                                             callback=create_array_from_img,
+                                                            train_test_split=0.1,
                                                             seed=1337,
                                                             test=False,
                                                             return_entries=True)
@@ -47,6 +49,7 @@ def train(config):
 
         generator_test, entries_test = generator_from_query(query,
                                                             callback=create_array_from_img,
+                                                            train_test_split=0.1,
                                                             seed=1337,
                                                             test=True,
                                                             return_entries=True)
@@ -75,6 +78,6 @@ def train(config):
             loss = mse_loss_fn(x_batch_test, reconstructed)
             loss_metric(loss)
             if step == 0:
-                show_comparisons(f'model_{str(epoch+1).fill(3)}_train.png', x_batch_test, reconstructed)
-        
+                show_comparisons(f'geolife_bike_train/model_{str(epoch+1).zfill(3)}_train.png', x_batch_test, reconstructed)
+        #model.save_weights(f'geolife_bike_train/trained_models/model_epoch_{str(epoch+1).zfill(3)}.h5', overwrite=True)
         click.echo(f"mean loss [test] = {loss_metric.result():.4f}")

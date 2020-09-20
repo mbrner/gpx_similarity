@@ -16,11 +16,11 @@ PGHOST = 'localhost'
 PGPORT = '5435'
 
 
-def drop_database(database_name):
+def drop_database(database_name, user, password, host, port):
     import psycopg2
     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
-    con = psycopg2.connect(user=PGUSER, password=PGPASS, host=PGHOST, port=PGPORT)
+    con = psycopg2.connect(user=user, password=password, host=host, port=port)
     con.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
     cursor  = con.cursor()
     sqlCreateDatabase = f"drop database {database_name};"

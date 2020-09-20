@@ -31,4 +31,4 @@ def show_comparisons(save_path, orig, rec, n_rows=8, comps_per_row=4, figsize=(1
     #         ax_orig, ax_rec = axes[row][pos], axes[row][pos+1]
     #         ax_rec.axis('off')
     #         ax_orig.axis('off')
-    fig.savefig(save_path, dpi=300,bbox_inches='tight')
+    fig.savefig(save_path, dpi=100,bbox_inches='tight')
