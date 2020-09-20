@@ -1,58 +1,80 @@
+from io import BytesIO
+
+import click
 import tensorflow as tf
+from PIL import Image
+from sqlalchemy.sql.expression import and_
+from sqlalchemy.orm import sessionmaker
 
-from tensorflow.keras import layers, models 
+from .model import generator_from_query, get_engine_and_model
+from .nn_models import Autoencoder
+from .visualize import show_comparisons
 
 
-class Autoencoder(tf.keras.Model):
+def create_array_from_img(result):
+    buf = BytesIO(result.image)
+    img = Image.open(buf).convert('RGB')        
+    return tf.keras.preprocessing.image.img_to_array(img) / 255.
 
-    def __init__(self, width=256, height=256, channels=3, *args, **kwargs):
-        super(Autoencoder, self).__init__(*args, **kwargs)
-        self.conv_1 = layers.Conv2D(32, 8, activation='relu', padding='same', input_shape=(height, width, channels))
-        self.pool_1 = layers.MaxPooling2D(4)
-        
-        self.conv_2 = layers.Conv2D(16, 4, activation='relu', padding='same')
-        self.pool_2 = layers.MaxPooling2D(4)
-        
-        self.conv_3 = layers.Conv2D(8, 2, activation='relu', padding='same')
-        self.pool_3 = layers.MaxPooling2D(2)
-        
-        self.upsamp_3 = layers.UpSampling2D(size=self.pool_3.pool_size)
-        self.trans_3 = layers.Conv2DTranspose.from_config(self.conv_3.get_config())
-        
-        self.upsamp_2 = layers.UpSampling2D(size=self.pool_2.pool_size)
-        self.trans_2 = layers.Conv2DTranspose.from_config(self.conv_2.get_config())
-        
-        self.upsamp_1 = layers.UpSampling2D(size=self.pool_1.pool_size)
-        self.trans_1 = layers.Conv2DTranspose.from_config(self.conv_1.get_config())
-        
-        self.conv_final = layers.Conv2D(3, 3, activation='relu', padding='same')
-        
 
-    def encode(self, x, flatten=False):
-        x = self.conv_1(x)
-        x = self.pool_1(x)
+def train(config):
+    engine, OSMImages = get_engine_and_model(**config['postgres'])
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    
+    opts = config['train']
+
+    query = session.query(OSMImages).filter(and_(OSMImages.route_type == 'bike'))
+    click.echo('\n'.join(['Options for training:'] + [f'-{k}: {v}' for k, v in opts.items()]))
+
+    model = Autoencoder(width=config['map_options']['width'], height=config['map_options']['height'])
+
+    optimizer = tf.keras.optimizers.Adam(learning_rate=opts['learning_rate'])
+    mse_loss_fn = tf.keras.losses.MeanSquaredError()
+
+    loss_metric = tf.keras.metrics.Mean()
+
+
+    # Iterate over epochs.
+    for epoch in range(opts['epochs']):
+        click.echo(f"Start of epoch {epoch+1}/{opts['epochs']}")
+        generator_train, entries_train = generator_from_query(query,
+                                                            callback=create_array_from_img,
+                                                            seed=1337,
+                                                            test=False,
+                                                            return_entries=True)
+        train_dataset = tf.data.Dataset.from_generator(lambda: generator_train, output_types=tf.float32)
+
+        generator_test, entries_test = generator_from_query(query,
+                                                            callback=create_array_from_img,
+                                                            seed=1337,
+                                                            test=True,
+                                                            return_entries=True)
+        test_dataset = tf.data.Dataset.from_generator(lambda: generator_test, output_types=tf.float32)
+
+
+        train_dataset_batched = train_dataset.batch(opts['batch_size'], drop_remainder=True).prefetch(opts['batch_size'] * 3)
+        test_dataset_batched = test_dataset.batch(opts['batch_size'], drop_remainder=True).prefetch(opts['batch_size'] * 3)
+        click.echo(f'Using {entries_train} samples train and {entries_test} samples test')
+        for step, x_batch_train in enumerate(train_dataset_batched):
+            with tf.GradientTape() as tape:
+                reconstructed = model(x_batch_train)
+                loss = mse_loss_fn(x_batch_train, reconstructed)
+
+            grads = tape.gradient(loss, model.trainable_weights)
+            optimizer.apply_gradients(zip(grads, model.trainable_weights))
+
+            loss_metric(loss)
+
+            if step % 10 == 0:
+                click.echo(f"step  {step}/{int(entries_train)/opts['batch_size']}: mean loss [train]= {loss_metric.result():.4f}")
+        print('Running test set!')
+        loss_metric.reset_states()
+        for step, x_batch_test in enumerate(test_dataset_batched):
+            reconstructed = model(x_batch_test)
+            loss = mse_loss_fn(x_batch_test, reconstructed)
+            loss_metric(loss)
+            if step == 0:
+                show_comparisons(f'model_{str(epoch+1).fill(3)}_train.png', x_batch_test, reconstructed)
         
-        x = self.conv_2(x)
-        x = self.pool_2(x)
-        
-        x = self.conv_3(x)
-        x = self.pool_3(x)
-        return x
-                
-        
-    def decode(self, x):
-        x = self.upsamp_3(x)
-        x = self.trans_3(x)
-        
-        x = self.upsamp_2(x)
-        x = self.trans_2(x)
-        
-        x = self.upsamp_1(x)
-        x = self.trans_1(x)
-        
-        return self.conv_final(x)
-        
-        
-    def call(self, inputs):
-        x = self.encode(inputs, flatten=False)
-        return self.decode(x)
+        click.echo(f"mean loss [test] = {loss_metric.result():.4f}")

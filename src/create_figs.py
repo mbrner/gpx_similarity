@@ -119,7 +119,7 @@ def shrink_fov(p_low, p_high, factor=0.95):
     return mid - (offset * factor), mid + (offset * factor)
     
 
-def add_train_files(config, in_files, dataset_name, default_route_type, extract_route_type):
+def add_train_files(config, in_files, dataset_name, default_route_type, extract_route_type, expand_paths):
 
     engine, OSMImages = get_engine_and_model(**config['postgres'])
     Session = sessionmaker(bind=engine)
@@ -132,6 +132,8 @@ def add_train_files(config, in_files, dataset_name, default_route_type, extract_
     in_files_prepared = []
     for p in in_files:
         p = pathlib.Path(p)
+        if expand_paths:
+            p = p.absolute()
         if extract_route_type:
             try:
                 route_type = p.name.split('_')[-1].split('.')[0]
