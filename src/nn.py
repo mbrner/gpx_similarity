@@ -67,7 +67,9 @@ def train(config, output_dir):
         train_dataset_batched = train_dataset.batch(opts['batch_size'], drop_remainder=True).prefetch(opts['batch_size'] * 3)
         test_dataset_batched = test_dataset.batch(opts['batch_size'], drop_remainder=True).prefetch(opts['batch_size'] * 3)
         click.echo(f'Using {entries_train} samples train and {entries_test} samples test')
+        n_steps = int(entries_train / opts['batch_size'])
         for step, x_batch_train in enumerate(train_dataset_batched):
+            step += 1
             with tf.GradientTape() as tape:
                 reconstructed = model(x_batch_train)
                 loss = mse_loss_fn(x_batch_train, reconstructed)
@@ -77,8 +79,8 @@ def train(config, output_dir):
 
             loss_metric(loss)
 
-            if step % 10 == 0:
-                click.echo(f"step  {step}/{int(entries_train)/opts['batch_size']}: mean loss [train]= {loss_metric.result():.4f}")
+            if (step % 10 == 0) or step == n_steps:
+                click.echo(f"step  {step}/{n_steps}: mean loss [train]= {loss_metric.result():.4f}")
         loss_metric.reset_states()
         for step, x_batch_test in enumerate(test_dataset_batched):
             reconstructed = model(x_batch_test)
