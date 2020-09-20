@@ -36,13 +36,14 @@ def add_train_files(type_extraction, config, dataset_name, route_type, in_files,
 
 @cli.command()  # @cli, not @click!
 @click.argument('config', type=click.Path(exists=True))
+@click.argument('output_dir')
 @click.option('-d', '--dataset-names', 'dataset_names', default=None, multiple=True)
 @click.option('-r', '--route-types', 'route_types', default=None, multiple=True)
-def train_model(config, route_types, dataset_names):
+def train_model(config, route_types, dataset_names, output_dir):
     from src.create_figs import add_train_files
     from src.nn import train
     config = toml.load(config)
-    train(config)
+    train(config, output_dir)
 
 
 if __name__ == '__main__':
