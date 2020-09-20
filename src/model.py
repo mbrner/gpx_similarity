@@ -105,22 +105,29 @@ def _postgres_generator(query, offset, total_limit, entries_per_query, seed=None
         offset += entries_per_query     
 
 
-def generator_from_query(query, train_test_split=0.3, test=False, entries_per_query=1000, seed=None, callback=None):
+
+def generator_from_query(query, train_test_split=0.3, test=False, entries_per_query=1000, seed=None, return_entries=False, callback=None):
     entries = query.count()
     test_offset = int(entries * train_test_split + 0.5)
     if test:
         total_limit = test_offset
         offset = 0
+        length = test_offset
     else:
         total_limit = None
         offset = test_offset
+        length = entries - test_offset
         
-    return _postgres_generator(query=query, 
+    generator = _postgres_generator(query=query, 
                                     offset=offset,
                                     total_limit=total_limit,
                                     entries_per_query=entries_per_query,
                                     seed=seed,
                                     callback=callback)
+    if return_entries:
+        return generator, length
+    else:
+        return generator
         
 
 
