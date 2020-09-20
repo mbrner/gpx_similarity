@@ -1,0 +1,24 @@
+[postgres] # postgres is only used to build up the train dataset
+database_name = 'gpx_similarity_bike_only'
+# if using docker-compose file
+user = 'postgres'
+password = 'postgres'
+host = 'localhost'
+port = '5435'
+
+[redis]
+host = 'localhost'
+port = '6379'
+
+[map_options]
+zoom = 16
+width = 256
+height = 256
+smoothing_dist = 5
+show_route = 0
+
+[train]
+seed = 1337
+batch_size = 32
+learning_rate = 1e-3
+epochs = 100
