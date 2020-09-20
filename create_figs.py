@@ -44,33 +44,14 @@ def df_from_points(points):
 
 
 
-def gpx_from_plt(plt_path, name=None, skip_lines=6, fmt_str='%Y-%m-%d %H:%S:%M'):
-    gpx = gpxpy.gpx.GPX()
-
-    gpx_track = gpxpy.gpx.GPXTrack(name=name)
-    gpx.tracks.append(gpx_track)
-
-    gpx_segment = gpxpy.gpx.GPXTrackSegment()
-    gpx_track.segments.append(gpx_segment)
-
-
-    skip_lines = 6
-    with plt_path.open() as stream:
-        csv_reader = csv.reader(stream)
-        for i, row in enumerate(csv_reader):
-            if i < skip_lines:
-                continue
-            time = datetime.datetime.strptime(f'{row[5]} {row[6]}', fmt_str)
-            gpx_segment.points.append(gpxpy.gpx.GPXTrackPoint(latitude=float(row[0]),
-                                                              longitude=float(row[1]),
-                                                              elevation=float(row[3])*0.3048,
-                                                              time=time))
-    return gpx
-
-def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unknown', zoom=16, size=(256, 256), max_distance=5, render_map=geotiler.render_map):
+def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unknown', dataset='unknown', zoom=16, size=(256, 256), max_distance=5, render_map=geotiler.render_map, dpi=100):
     width, height = size
     origin = str(gpx_file)
-    delete_q = model.__table__.delete().where(model.origin==origin and model.show_route==show_route and model.zoom==zoom and model.width == width and model.height==height)
+    delete_q = model.__table__.delete().where(model.origin==origin and
+                                              model.show_route==show_route and
+                                              model.zoom==zoom and
+                                              model.width == width and
+                                              model.height==height)
     dbsession.execute(delete_q)
     dbsession.commit()
 
@@ -91,7 +72,7 @@ def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unkn
         p_long = f_long(d)
         mm = geotiler.Map(center=(p_long, p_lat), zoom=zoom, size=size)
         img = render_map(mm)
-        fig = plt.figure(figsize=(10, 10))
+        fig = plt.figure(figsize=(width/dpi, height/dpi))
         ax = plt.Axes(fig, [0., 0., 1., 1.])
         ax.set_axis_off()
         fig.add_axes(ax)
@@ -107,7 +88,7 @@ def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unkn
             if len(track.shape) > 1:
                 ax.plot(track[:, 0], track[:, 1], 'r-', alpha=1.0, lw=10, ms=10)
         buf = io.BytesIO()
-        fig.savefig(buf, format='png')
+        fig.savefig(buf, format='png', dpi=dpi)
         buf.seek(0)
         new_entry = model(origin=str(gpx_file),
                           zoom=zoom,
@@ -120,6 +101,7 @@ def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unkn
                           height=height,
                           show_route=show_route,
                           route_type=route_type,
+                          dataset=dataset,
                           image=buf.read())
         new_entries.append(new_entry)
         plt.close(fig)
@@ -133,15 +115,21 @@ def shrink_fov(p_low, p_high, factor=0.95):
     
     
 if __name__ == '__main__':
-    from model import OSMImages, ENGINE
+    from model import get_engine_and_model
     from sqlalchemy.orm import sessionmaker
-    Session = sessionmaker(bind=ENGINE)
+    database_name = 'gpx_similarity'
+    engine, OSMImages = get_engine_and_model(database_name)
+    Session = sessionmaker(bind=engine)
     session = Session()
     
     client = redis.Redis('localhost')
     downloader = redis_downloader(client)
     render_map = functools.partial(geotiler.render_map, downloader=downloader)
-    in_dir = pathlib.Path('/home/mathis/Projects/gpx_similarity/gpx_recorded/')
-    for i, p in enumerate(in_dir.glob('*.gpx')):
-        print(p)
-        create_imgages(session, OSMImages, p, route_type='bike', show_route=False, render_map=render_map)
+    #in_dir = pathlib.Path('./gpx_recorded/')
+    #for i, p in enumerate(in_dir.glob('*.gpx')):
+    #    print(p)
+    #    create_imgages(session, OSMImages, p, route_type='bike', show_route=False, render_map=render_map, dataset='komoot')
+    in_dir = pathlib.Path('./geo_life_1.3_gpx/')
+    for i, p in enumerate(in_dir.glob('*bike.gpx')):
+        print(p.name.split('_')[-1].split('.')[0])
+        create_imgages(session, OSMImages, p, route_type='bike', show_route=False, render_map=render_map, dataset='geolife')
