@@ -48,7 +48,6 @@ def df_from_points(points):
     return df
 
 
-
 def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unknown', dataset='unknown', zoom=16, size=(256, 256), max_distance=5, render_map=geotiler.render_map, dpi=100):
     width, height = size
     origin = str(gpx_file)
@@ -59,9 +58,33 @@ def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unkn
                                               model.height==height)
     dbsession.execute(delete_q)
     dbsession.commit()
+    try:
+        gpx = gpxpy.parse(gpx_file.open())
+    except gpxpy.gpx.GPXXMLSyntaxException:
+        print(f'{gpx_file} is not a valid GPX file!')
+        return
+    for track_idx, track in enumerate(gpx.tracks):
+        for segment_idx, segment in enumerate(track.segments):
+            _create_images_single_segment(
+                dbsession,
+                model,
+                origin,
+                segment,
+                track_idx,
+                segment_idx,
+                show_route,
+                route_type,
+                dataset,
+                zoom,
+                size,
+                max_distance,
+                render_map,
+                dpi)
 
-    gpx = gpxpy.parse(gpx_file.open())
-    raw_points = gpx.tracks[0].segments[0].points
+
+def _create_images_single_segment(dbsession, model, path, segment, track_idx, segment_idx, show_route=True, route_type='unknown', dataset='unknown', zoom=16, size=(256, 256), max_distance=5, render_map=geotiler.render_map, dpi=100):
+    width, height = size
+    raw_points = segment.points
     points = simplify_polyline(raw_points, max_distance=5)
     df = df_from_points(points)
     if raw_points is not None:
@@ -95,7 +118,9 @@ def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unkn
         buf = io.BytesIO()
         fig.savefig(buf, format='png', dpi=dpi)
         buf.seek(0)
-        new_entry = model(origin=str(gpx_file),
+        new_entry = model(origin=str(path),
+                          track_id=track_idx,
+                          segment_id=segment_idx,
                           zoom=zoom,
                           idx=i,
                           p_0_lat=p_0_lat,
@@ -112,6 +137,7 @@ def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unkn
         plt.close(fig)
     dbsession.add_all(new_entries)
     dbsession.commit()
+
 
 def shrink_fov(p_low, p_high, factor=0.95):
     mid = (p_low + p_high) / 2.

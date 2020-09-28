@@ -15,6 +15,8 @@ class Autoencoder(tf.keras.Model):
         
         self.conv_3 = layers.Conv2D(8, 2, activation='relu', padding='same')
         self.pool_3 = layers.MaxPooling2D(2)
+
+        self.dropout = tf.keras.layers.Dropout(.2)
         
         self.upsamp_3 = layers.UpSampling2D(size=self.pool_3.pool_size)
         self.trans_3 = layers.Conv2DTranspose.from_config(self.conv_3.get_config())
@@ -26,7 +28,6 @@ class Autoencoder(tf.keras.Model):
         self.trans_1 = layers.Conv2DTranspose.from_config(self.conv_1.get_config())
         
         self.conv_final = layers.Conv2D(3, 3, activation='sigmoid', padding='same')
-        
 
     def encode(self, x, flatten=False):
         x = self.conv_1(x)
@@ -39,7 +40,6 @@ class Autoencoder(tf.keras.Model):
         x = self.pool_3(x)
         return x
                 
-        
     def decode(self, x):
         x = self.upsamp_3(x)
         x = self.trans_3(x)
@@ -52,7 +52,13 @@ class Autoencoder(tf.keras.Model):
         
         return self.conv_final(x)
         
-        
     def call(self, inputs):
         x = self.encode(inputs, flatten=False)
+        x = self.dropout(x)
         return self.decode(x)
+
+    @classmethod
+    def from_weights(cls, index_file):
+        model = cls()
+        model.load_weights(index_file)
+        return model

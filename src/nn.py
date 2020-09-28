@@ -5,9 +5,14 @@ import datetime
 import toml
 import click
 import tensorflow as tf
+import numpy as np
 from PIL import Image
+
 from sqlalchemy.sql.expression import and_
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.dialects import postgresql
+from sqlalchemy import text
+from sqlalchemy_filters import apply_filters
 
 from .model import generator_from_query, get_engine_and_model
 from .nn_models import Autoencoder
@@ -20,35 +25,63 @@ def create_array_from_img(result):
     return tf.keras.preprocessing.image.img_to_array(img) / 255.
 
 
-def train(config, output_dir):
+def create_array_from_img_train(result):
+    buf = BytesIO(result.image)
+    img = Image.open(buf).convert('RGB')        
+    img = tf.keras.preprocessing.image.img_to_array(img) / 255.
+    randint = np.random.randint(8)
+    k = randint % 4
+    flip = bool(randint // 4)
+    if k > 0:
+        img = tf.image.rot90(img, k=k)
+    if flip:
+        img = tf.image.flip_left_right(img)
+    return img
+
+
+def train(config, output_dir, weights=None):
     engine, OSMImages = get_engine_and_model(**config['postgres'])
     Session = sessionmaker(bind=engine)
     session = Session()
     
     opts = config['train']
 
-    output_dir = pathlib.Path(output_dir) / datetime.datetime.now().strftime('%Y%m%d_%h%M')
+    output_dir = pathlib.Path(output_dir) / datetime.datetime.now().strftime('%Y%m%d_%H%M')
     output_dir.mkdir(exist_ok=True, parents=True)
-
-    query = session.query(OSMImages).filter(and_(OSMImages.route_type == 'bike', OSMImages.dataset == 'komoot'))
-    click.echo('\n'.join(['Options for training:'] + [f'-{k}: {v}' for k, v in opts.items()]))
+    
+    base_query = session.query(OSMImages.image)
+    query = apply_filters(base_query, config['train']['filters'])
+    filter_str = str(query.statement.compile(compile_kwargs={"literal_binds": True})).replace('\n', '\n\t')
+    opts['filters'] = f'\n\t{filter_str}'
 
     model = Autoencoder(width=config['map_options']['width'], height=config['map_options']['height'])
+    if weights is not None:
+        model.load_weights(weights)
+        opts['initial_weights'] = str(weights)
+    else:
+        opts['initial_weights'] = None
+    click.echo('\n'.join(['Options for training:'] + [f'-{k}: {v}' for k, v in opts.items()]))
     model.save_weights(str(output_dir / 'models' / f'model_epoch_{"0".zfill(3)}.weights'), overwrite=True)
     with (output_dir / 'config.toml').open('w') as stream:
         toml.dump(config, stream)
-
     optimizer = tf.keras.optimizers.Adam(learning_rate=opts['learning_rate'])
     mse_loss_fn = tf.keras.losses.MeanSquaredError()
 
     loss_metric = tf.keras.metrics.Mean()
 
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+        except RuntimeError as e:
+            print(e)
 
     # Iterate over epochs.
     for epoch in range(opts['epochs']):
         click.echo(f"Start of epoch {epoch+1}/{opts['epochs']}")
         generator_train, entries_train = generator_from_query(query,
-                                                            callback=create_array_from_img,
+                                                            callback=create_array_from_img_train,
                                                             train_test_split=0.1,
                                                             seed=1337,
                                                             test=False,
@@ -73,7 +106,6 @@ def train(config, output_dir):
             with tf.GradientTape() as tape:
                 reconstructed = model(x_batch_train)
                 loss = mse_loss_fn(x_batch_train, reconstructed)
-
             grads = tape.gradient(loss, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
 

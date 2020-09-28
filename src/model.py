@@ -47,6 +47,8 @@ def get_engine_and_model(database_name, user, password, host, port, table_name='
         __tablename__ = table_name
         id = Column(Integer, primary_key=True)
         origin = Column(String)
+        track_id = Column(Integer)
+        segment_id = Column(Integer)
         idx = Column(Integer)
         zoom = Column(Integer)
         p_0_lat = Column(Float)
