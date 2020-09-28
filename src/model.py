@@ -1,19 +1,13 @@
+import pathlib
 from functools import partial
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Date, LargeBinary, Float, Boolean
+from sqlalchemy import Column, Integer, String, Date, LargeBinary, Float, Boolean, ForeignKey, Binary
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.sql.expression import func
 from sqlalchemy import text
-
-
-DATABASE_NAME = 'gpx_similarity'
-PGUSER = 'postgres'
-PGPASS= 'postgres'
-PGHOST = 'localhost'
-PGPORT = '5435'
 
 
 def drop_database(database_name, user, password, host, port):
@@ -37,16 +31,38 @@ def create_database(database_name, user, password, host, port):
     sqlCreateDatabase = f"create database {database_name};"
     cursor.execute(sqlCreateDatabase)
 
-def get_engine_and_model(database_name, user, password, host, port, table_name='osm_images'):
-    uri = f'postgresql+psycopg2://{user}:{password}@{host}:{port}/{database_name}'
+def get_engine_and_model(database_name, user=None, password=None, host=None, port=None, table_name='osm_images', train=True):
+    if train:
+        if user is None or password is None or host is None or port is None:
+            raise ValueError('For training postgres credentials has to be set. See config.toml for infos!')
+        uri = f'postgresql+psycopg2://{user}:{password}@{host}:{port}/{database_name}'
+    else:
+        database_path = pathlib.Path(database_name).absolute().with_suffix('.db')
+        uri = f'sqlite+pysqlite:///{database_path}'
+        print(f'{uri=}')
+        
     engine = create_engine(uri)
 
     base = declarative_base()
 
+    if not train:
+        class Routes(base):
+            __tablename__ = 'routes'
+            id = Column(Integer, primary_key=True)
+            path = Column(String)
+            dataset = Column(String)
+            route_type = Column(String)
+            gpx_file = Column(LargeBinary)
+
     class OSMImages(base):
         __tablename__ = table_name
         id = Column(Integer, primary_key=True)
-        origin = Column(String)
+        if train:
+            origin = Column(String)
+            dataset = Column(String)
+            route_type = Column(String)
+        else:
+            origin = Column(Integer, ForeignKey('routes.id'))
         track_id = Column(Integer)
         segment_id = Column(Integer)
         idx = Column(Integer)
@@ -57,21 +73,22 @@ def get_engine_and_model(database_name, user, password, host, port, table_name='
         p_1_long = Column(Float)
         width = Column(Integer)
         height = Column(Integer)
-        route_type = Column(String)
         show_route = Column(Boolean)
-        dataset = Column(String)
         image = Column(LargeBinary)
-
 
     create_models = partial(base.metadata.create_all, engine, checkfirst=True)
 
-    try:
-        create_models()
-    except OperationalError:
-        create_database(database_name, user, password, host, port)
-        create_models()
+    if train:
+        try:
+            create_models()
+        except OperationalError:
+            create_database(database_name, user, password, host, port)
+            create_models()
 
-    return engine, OSMImages
+        return engine, OSMImages
+    else:
+        create_models()
+        return engine, Routes, OSMImages
 
 
 def set_seed(session, seed, max_val=1177314959, min_val=0):

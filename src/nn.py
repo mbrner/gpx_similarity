@@ -49,8 +49,9 @@ def train(config, output_dir, weights=None):
     output_dir = pathlib.Path(output_dir) / datetime.datetime.now().strftime('%Y%m%d_%H%M')
     output_dir.mkdir(exist_ok=True, parents=True)
     
-    base_query = session.query(OSMImages.image)
-    query = apply_filters(base_query, config['train']['filters'])
+    query = session.query(OSMImages.image)
+    if filters := config['train'].get('filters', None):
+        query = apply_filters(query, filters)
     filter_str = str(query.statement.compile(compile_kwargs={"literal_binds": True})).replace('\n', '\n\t')
     opts['filters'] = f'\n\t{filter_str}'
 
@@ -77,7 +78,6 @@ def train(config, output_dir, weights=None):
         except RuntimeError as e:
             print(e)
 
-    # Iterate over epochs.
     for epoch in range(opts['epochs']):
         click.echo(f"Start of epoch {epoch+1}/{opts['epochs']}")
         generator_train, entries_train = generator_from_query(query,

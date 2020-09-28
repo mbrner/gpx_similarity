@@ -3,6 +3,7 @@ import pathlib
 import datetime
 import functools
 import io
+import gzip
 
 import click
 import pandas as pd
@@ -22,6 +23,14 @@ from sqlalchemy.orm import sessionmaker
 
 
 from .model import get_engine_and_model
+
+
+def compress_gpx(path):
+    return gzip.compress(path.open('rb').read())
+
+
+def decompress_gpx(blob):
+    return gzip.decompress(compressed).decode('utf-8')
 
 
 def points2array(points):
@@ -171,6 +180,61 @@ def add_train_files(config, in_files, dataset_name, default_route_type, extract_
         else:
             route_type = default_route_type
         in_files_prepared.append((p, route_type))
+
+    def show_item(item):
+        if item is not None:
+            return '{} [type: {}]'.format(str(item[0]), item[1])
+        else:
+            return ''
+
+    opts = config['map_options']
+    with click.progressbar(in_files_prepared, item_show_func=show_item, show_pos=True) as bar:
+        for (path, route_type) in bar:
+            create_imgages(session,
+                           OSMImages,
+                           path,
+                           route_type=route_type,
+                           render_map=render_map,
+                           show_route=bool(opts['show_route']),
+                           zoom=opts['zoom'],
+                           size=(opts['width'], opts['width']),
+                           max_distance=opts['smoothing_dist'],
+                           dataset=dataset_name)
+
+
+
+def add_reference_files(config, reference_database, in_files, dataset_name, default_route_type, extract_route_type, expand_paths):
+    engine, Routes, OSMImages = get_engine_and_model(reference_database, train=False)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    client = redis.Redis(**config['redis'])
+    downloader = redis_downloader(client)
+    render_map = functools.partial(geotiler.render_map, downloader=downloader)
+
+    in_files_prepared = []
+    for p in in_files:
+        p = pathlib.Path(p)
+        if expand_paths:
+            p = p.absolute()
+        if extract_route_type:
+            try:
+                route_type = p.name.split('_')[-1].split('.')[0]
+            except:
+                route_type = default_route_type
+            else:
+                if route_type == '':
+                    route_type = default_route_type
+        else:
+            route_type = default_route_type
+        route_entry = Routes(
+            path=str(p),
+            dataset=dataset_name,
+            route_type=route_type,
+            gpx_file=compress_gpx(p)
+        )
+        session.add(route_entry)
+        session.commit()
+        in_files_prepared.append((p, route_entry.id))        
 
     def show_item(item):
         if item is not None:
