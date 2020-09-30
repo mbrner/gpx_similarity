@@ -14,8 +14,12 @@ port = '6379'
 zoom = 16
 width = 256
 height = 256
+channels = 3
 smoothing_dist = 5
 show_route = 0
+
+[apply]
+batch_size = 32
 
 [train]
 seed = 1337
@@ -24,12 +28,25 @@ learning_rate = 1e-3
 epochs = 100
 tensorboard = true
 
+[model]
+activation = 'relu'
+padding = 'same'
+dropout_rate = 0.2
+conv_layer_opts = [[32, 8], [16, 4], [8, 2]]
+pooling_layer_opts = [4, 4, 2]
+
+
 [train.filters] # Check https://github.com/juliotrigo/sqlalchemy-filters for filter syntax
     [[train.filters.and]]
         field = 'route_type'
         op = '=='
         value = 'bike'
     [[train.filters.and]]
-        field = 'dataset'
-        op = '=='
-        value = 'bikepacking'
+        [[train.filters.and.or]]
+            field = 'dataset'
+            op = '=='
+            value = 'bikepacking'
+        [[train.filters.and.or]]
+            field = 'dataset'
+            op = '=='
+            value = 'geolife'
