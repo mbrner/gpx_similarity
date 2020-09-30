@@ -6,6 +6,7 @@ import toml
 def cli():
     pass
 
+cli.help = open('README.md').read()
 
 @cli.command()  # @cli, not @click!
 @click.argument('config', type=click.Path(exists=True))
@@ -15,6 +16,10 @@ def cli():
 @click.option('-d', '--dataset-name', 'dataset_name', default='unknown')
 @click.option('-r', '--route-type', 'route_type', default='unknown')
 def add_train_files(type_extraction, config, dataset_name, route_type, in_files, expand_paths):
+    """Add .gpx files to the training database.
+    Add IN_FILES (.gpx files) as images of segements of the route to the train database.
+    The settings for the process are taken from CONFIG.
+    BEWARE: postgres and redis have to be running for all training steps."""
     from src.create_figs import add_train_files
     if len(in_files) > 3:
         in_files_str = f"('{in_files[0]}', '{in_files[1]}',... '{in_files[-1]}') [{len(in_files)} files]"
@@ -36,8 +41,14 @@ def add_train_files(type_extraction, config, dataset_name, route_type, in_files,
 @cli.command()  # @cli, not @click!
 @click.argument('config', type=click.Path(exists=True))
 @click.argument('output_dir', type=click.Path())
-@click.option('-w', '--weights', 'weights', default=None)
+@click.option('-w', '--weights', 'weights',
+              default=None,
+              help='Initial weights for the model. If None are provided the '
+                   'model weights are initialized random.')
 def train_model(config, output_dir, weights):
+    """Train the model.
+    The options for the training are taken from CONFIG.
+    Training infos and model weights are saved in the OUTPUT_DIR"""
     from src.nn import train
     config = toml.load(config)
     train(config, output_dir, weights)
