@@ -9,6 +9,7 @@ To start a step `python gpx_similarity.py CMD`
 The order of CMDs are:
 1. add-train-files
 2. train-model
+
 This produces a trained model. A trained model is need to build up a reference database needed to run comparisons.
 3. add-reference-files
 4. run-comparison
