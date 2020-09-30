@@ -109,6 +109,7 @@ def main(in_dir, out_dir):
     """
     in_dir = pathlib.Path(in_dir)
     out_dir = pathlib.Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     for p in in_dir.glob('*'):
         if p.is_dir():
             try:
