@@ -57,7 +57,7 @@ def df_from_points(points):
     return df
 
 
-def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unknown', dataset='unknown', zoom=16, size=(256, 256), max_distance=5, render_map=geotiler.render_map, dpi=100):
+def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unknown', dataset='unknown', route_id=None, zoom=16, size=(256, 256), max_distance=5, render_map=geotiler.render_map, dpi=100):
     width, height = size
     origin = str(gpx_file)
     delete_q = model.__table__.delete().where(model.origin==origin and
@@ -84,6 +84,7 @@ def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unkn
                 show_route,
                 route_type,
                 dataset,
+                route_id,
                 zoom,
                 size,
                 max_distance,
@@ -91,7 +92,21 @@ def create_imgages(dbsession, model, gpx_file, show_route=True, route_type='unkn
                 dpi)
 
 
-def _create_images_single_segment(dbsession, model, path, segment, track_idx, segment_idx, show_route=True, route_type='unknown', dataset='unknown', zoom=16, size=(256, 256), max_distance=5, render_map=geotiler.render_map, dpi=100):
+def _create_images_single_segment(dbsession,
+                                  model,
+                                  origin,
+                                  segment,
+                                  track_idx,
+                                  segment_idx,
+                                  show_route=True,
+                                  route_type='unknown',
+                                  dataset='unknown',
+                                  route_id=None,
+                                  zoom=16,
+                                  size=(256, 256),
+                                  max_distance=5,
+                                  render_map=geotiler.render_map,
+                                  dpi=100):
     width, height = size
     raw_points = segment.points
     points = simplify_polyline(raw_points, max_distance=5)
@@ -127,21 +142,26 @@ def _create_images_single_segment(dbsession, model, path, segment, track_idx, se
         buf = io.BytesIO()
         fig.savefig(buf, format='png', dpi=dpi)
         buf.seek(0)
-        new_entry = model(origin=str(path),
-                          track_id=track_idx,
-                          segment_id=segment_idx,
-                          zoom=zoom,
-                          idx=i,
-                          p_0_lat=p_0_lat,
-                          p_0_long=p_0_long,
-                          p_1_lat=p_1_lat,
-                          p_1_long=p_1_long,
-                          width=width,
-                          height=height,
-                          show_route=show_route,
-                          route_type=route_type,
-                          dataset=dataset,
-                          image=buf.read())
+        entry = dict(origin=str(origin),
+                    track_id=track_idx,
+                    segment_id=segment_idx,
+                    zoom=zoom,
+                    idx=i,
+                    p_0_lat=p_0_lat,
+                    p_0_long=p_0_long,
+                    p_1_lat=p_1_lat,
+                    p_1_long=p_1_long,
+                    width=width,
+                    height=height,
+                    show_route=show_route,
+                    image=buf.read())
+        if route_id is None:
+            entry['origin'] = str(origin)
+            entry['route_type'] = route_type
+            entry['dataset'] = dataset
+        else:
+            entry['origin'] = origin
+        new_entry = model(**entry)
         new_entries.append(new_entry)
         plt.close(fig)
     dbsession.add_all(new_entries)
@@ -153,7 +173,6 @@ def shrink_fov(p_low, p_high, factor=0.95):
     offset = (p_high - p_low) / 2.
     return mid - (offset * factor), mid + (offset * factor)
     
-
 def add_train_files(config, in_files, dataset_name, default_route_type, extract_route_type, expand_paths):
 
     engine, OSMImages = get_engine_and_model(**config['postgres'])
@@ -212,29 +231,38 @@ def add_reference_files(config, reference_database, in_files, dataset_name, defa
     render_map = functools.partial(geotiler.render_map, downloader=downloader)
 
     in_files_prepared = []
-    for p in in_files:
-        p = pathlib.Path(p)
-        if expand_paths:
-            p = p.absolute()
-        if extract_route_type:
-            try:
-                route_type = p.name.split('_')[-1].split('.')[0]
-            except:
-                route_type = default_route_type
-            else:
-                if route_type == '':
-                    route_type = default_route_type
+    def show_item(item):
+        if item is not None:
+            return f'{item}'
         else:
-            route_type = default_route_type
-        route_entry = Routes(
-            path=str(p),
-            dataset=dataset_name,
-            route_type=route_type,
-            gpx_file=compress_gpx(p)
-        )
-        session.add(route_entry)
-        session.commit()
-        in_files_prepared.append((p, route_entry.id))        
+            return ''
+
+    opts = config['map_options']
+    click.echo('Adding GPX Files to Database:')
+    with click.progressbar(in_files, item_show_func=show_item, show_pos=True) as bar:
+        for p in bar:
+            p = pathlib.Path(p)
+            if expand_paths:
+                p = p.absolute()
+            if extract_route_type:
+                try:
+                    route_type = p.name.split('_')[-1].split('.')[0]
+                except:
+                    route_type = default_route_type
+                else:
+                    if route_type == '':
+                        route_type = default_route_type
+            else:
+                route_type = default_route_type
+            route_entry = Routes(
+                path=str(p),
+                dataset=dataset_name,
+                route_type=route_type,
+                gpx_file=compress_gpx(p)
+            )
+            session.add(route_entry)
+            session.commit()
+            in_files_prepared.append((p, route_entry.id))        
 
     def show_item(item):
         if item is not None:
@@ -243,13 +271,13 @@ def add_reference_files(config, reference_database, in_files, dataset_name, defa
             return ''
 
     opts = config['map_options']
+    click.echo('Generating segement images:')
     with click.progressbar(in_files_prepared, item_show_func=show_item, show_pos=True) as bar:
-        for (path, route_type) in bar:
+        for (path, route_entry_id) in bar:
             create_imgages(session,
                            OSMImages,
                            path,
-                           route_type=route_type,
-                           render_map=render_map,
+                           route_id=route_entry_id,
                            show_route=bool(opts['show_route']),
                            zoom=opts['zoom'],
                            size=(opts['width'], opts['width']),

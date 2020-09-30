@@ -97,9 +97,36 @@ def set_seed(session, seed, max_val=1177314959, min_val=0):
         raise ValueError(f'Seed has to be between {min_val} and {max_val}.')
     sql = text('select setseed({0});'.format(seed_f))  # save the SEED_VAL per user/visit
     session.execute(sql)
-    
 
-def _postgres_generator(query, offset, total_limit, entries_per_query, seed=None, callback=None):
+
+
+def postgres_generator(Session, model, offset=0, total_limit=None, entries_per_query=1000, callback=None):
+    session = Session()
+    query = session.query(model.image)
+
+    n_results = 0
+    if not callable(callback):
+        callback = None
+        
+    while True:
+        if total_limit:
+            if offset >= total_limit:
+                break
+            elif offset + entries_per_query > total_limit:
+                entries_per_query = total_limit - offset
+        result = query.limit(entries_per_query).offset(offset).all()
+        n_results = len(result)
+        for r in result:
+            if callback is not None:
+                yield callback(r)
+            else:
+                yield r
+        if n_results < entries_per_query:
+            break
+        offset += entries_per_query     
+
+
+def _postgres_generator_rnd(query, offset, total_limit, entries_per_query, seed=None, callback=None):
     if seed is not None:
         set_seed(query.session, seed)
     n_results = 0
@@ -118,14 +145,13 @@ def _postgres_generator(query, offset, total_limit, entries_per_query, seed=None
             if callback is not None:
                 yield callback(r)
             else:
-                yield result
+                yield r
         if n_results < entries_per_query:
             break
         offset += entries_per_query     
 
 
-
-def generator_from_query(query, train_test_split=0.3, test=False, entries_per_query=1000, seed=None, return_entries=False, callback=None):
+def generator_from_query_rnd_order(query, train_test_split=0.3, test=False, entries_per_query=1000, seed=None, return_entries=False, callback=None):
     entries = query.count()
     test_offset = int(entries * train_test_split + 0.5)
     if test:
@@ -137,16 +163,14 @@ def generator_from_query(query, train_test_split=0.3, test=False, entries_per_qu
         offset = test_offset
         length = entries - test_offset
         
-    generator = _postgres_generator(query=query, 
-                                    offset=offset,
-                                    total_limit=total_limit,
-                                    entries_per_query=entries_per_query,
-                                    seed=seed,
-                                    callback=callback)
+    generator = _postgres_generator_rnd(query=query, 
+                                        offset=offset,
+                                        total_limit=total_limit,
+                                        entries_per_query=entries_per_query,
+                                        seed=seed,
+                                        callback=callback)
     if return_entries:
         return generator, length
     else:
         return generator
         
-
-
