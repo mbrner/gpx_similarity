@@ -12,7 +12,7 @@ The order of CMDs are:
 
 2. train-model
 
-This produces a trained model. A trained model is need to build up a reference database needed to run comparisons.
+This produces a trained model. A trained model is needed to build up a reference database against with comparisons can be executed.
 
 3. add-reference-files
 
