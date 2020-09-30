@@ -6,7 +6,8 @@ import toml
 def cli():
     pass
 
-cli.help = open('README.md').read()
+cli.__doc__ = open('README.md').read()
+cli.help =  cli.__doc__
 
 @cli.command()  # @cli, not @click!
 @click.argument('config', type=click.Path(exists=True))
