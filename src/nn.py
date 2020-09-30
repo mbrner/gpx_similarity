@@ -14,9 +14,20 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy import text
 from sqlalchemy_filters import apply_filters
 
-from .model import generator_from_query, get_engine_and_model
+from .model import generator_from_query_rnd_order, get_engine_and_model, postgres_generator
 from .nn_models import Autoencoder
 from .visualize import show_comparisons
+
+
+def enable_memory_growth():
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+        except RuntimeError as e:
+            print(e)
+
 
 
 def create_array_from_img(result):
@@ -37,6 +48,42 @@ def create_array_from_img_train(result):
     if flip:
         img = tf.image.flip_left_right(img)
     return img
+
+
+def apply_model_ref_files(config, output_dir, reference_database, weights):
+    engine, Routes, OSMImages = get_engine_and_model(reference_database, train=False)
+    Session = sessionmaker(bind=engine)
+    
+    opts = config['apply']
+
+
+    output_dir = pathlib.Path(output_dir) / datetime.datetime.now().strftime('%Y%m%d_%H%M')
+    output_dir.mkdir(exist_ok=True, parents=True)
+        
+    #if filters := config.get('apply', {}).get('filters', None):
+    #    query = apply_filters(query, filters)
+    #n_images = query.count()
+    model = Autoencoder(width=config['map_options']['width'], height=config['map_options']['height'])
+    model.load_weights(weights)
+    generator = postgres_generator(Session, OSMImages, callback=create_array_from_img)
+    dataset = tf.data.Dataset.from_generator(lambda: generator, output_types=tf.float32)
+    dataset_batched = dataset.batch(opts['batch_size'], drop_remainder=True)
+
+    mse_loss_fn = tf.keras.losses.MeanSquaredError()
+
+    loss_metric = tf.keras.metrics.Mean()
+
+    for step, x_batch in enumerate(dataset_batched):
+        reconstructed = model(x_batch)
+        loss = mse_loss_fn(x_batch, reconstructed)
+        loss_metric(loss)
+        if step == 0:
+            show_comparisons(output_dir / f'maps_apply.png', x_batch, reconstructed, n_rows=4)
+        if ((step % 10 == 0) and (step > 0)):
+            click.echo(f'Labeled {(step+1) * opts["batch_size"]}/??? images')
+    click.echo(f"mean loss [apply] = {loss_metric.result():.4f}")
+
+
 
 
 def train(config, output_dir, weights=None):
@@ -69,18 +116,12 @@ def train(config, output_dir, weights=None):
     mse_loss_fn = tf.keras.losses.MeanSquaredError()
 
     loss_metric = tf.keras.metrics.Mean()
-
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    if gpus:
-        try:
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
-        except RuntimeError as e:
-            print(e)
+    
+    enable_memory_growth()
 
     for epoch in range(opts['epochs']):
         click.echo(f"Start of epoch {epoch+1}/{opts['epochs']}")
-        generator_train, entries_train = generator_from_query(query,
+        generator_train, entries_train = generator_from_query_rnd_order(query,
                                                             callback=create_array_from_img_train,
                                                             train_test_split=0.1,
                                                             seed=1337,
@@ -88,7 +129,7 @@ def train(config, output_dir, weights=None):
                                                             return_entries=True)
         train_dataset = tf.data.Dataset.from_generator(lambda: generator_train, output_types=tf.float32)
 
-        generator_test, entries_test = generator_from_query(query,
+        generator_test, entries_test = generator_from_query_rnd_order(query,
                                                             callback=create_array_from_img,
                                                             train_test_split=0.1,
                                                             seed=1337,

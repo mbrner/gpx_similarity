@@ -36,10 +36,8 @@ def add_train_files(type_extraction, config, dataset_name, route_type, in_files,
 @cli.command()  # @cli, not @click!
 @click.argument('config', type=click.Path(exists=True))
 @click.argument('output_dir', type=click.Path())
-@click.option('-d', '--dataset-names', 'dataset_names', default=None, multiple=True)
-@click.option('-r', '--route-types', 'route_types', default=None, multiple=True)
 @click.option('-w', '--weights', 'weights', default=None)
-def train_model(config, route_types, dataset_names, output_dir, weights):
+def train_model(config, output_dir, weights):
     from src.nn import train
     config = toml.load(config)
     train(config, output_dir, weights)
@@ -72,6 +70,17 @@ def add_reference_files(type_extraction, config, dataset_name, route_type, in_fi
                         extract_route_type=type_extraction,
                         expand_paths=expand_paths)
 
+
+
+@cli.command()  # @cli, not @click!
+@click.argument('config', type=click.Path(exists=True))
+@click.argument('reference_database', type=click.Path())
+@click.argument('weights', type=click.Path())
+@click.argument('output_dir', type=click.Path())
+def apply_model_to_reference_files(config, output_dir, reference_database, weights):
+    from src.nn import apply_model_ref_files
+    config = toml.load(config)
+    apply_model_ref_files(config, output_dir, reference_database, weights)
 
 if __name__ == '__main__':
     cli()
