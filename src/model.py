@@ -62,9 +62,10 @@ def get_engine_and_model(database_name, user=None, password=None, host=None, por
             dataset = Column(String)
             route_type = Column(String)
         else:
+            embedding_hash = Column(String)
             origin = Column(Integer, ForeignKey('routes.id'))
-        track_id = Column(Integer)
-        segment_id = Column(Integer)
+        track_idx = Column(Integer)
+        segment_idx = Column(Integer)
         idx = Column(Integer)
         zoom = Column(Integer)
         p_0_lat = Column(Float)
@@ -74,6 +75,7 @@ def get_engine_and_model(database_name, user=None, password=None, host=None, por
         width = Column(Integer)
         height = Column(Integer)
         show_route = Column(Boolean)
+        save_type = Column(Integer)
         image = Column(LargeBinary)
 
     create_models = partial(base.metadata.create_all, engine, checkfirst=True)

@@ -1,5 +1,5 @@
 [postgres] # postgres is only used to build up the train dataset
-database_name = 'gpx_similarity_bikepacking'
+database_name = 'gpx_similarity_png'
 # if using docker-compose file
 user = 'postgres'
 password = 'postgres'
@@ -16,17 +16,10 @@ width = 256
 height = 256
 channels = 3
 smoothing_dist = 5
-show_route = 0
+show_route = false
 
 [apply]
-batch_size = 32
-
-[train]
-seed = 1337
-batch_size = 16
-learning_rate = 1e-3
-epochs = 100
-tensorboard = true
+batch_size = 7
 
 [model]
 activation = 'relu'
@@ -35,6 +28,15 @@ dropout_rate = 0.2
 conv_layer_opts = [[32, 8], [16, 4], [8, 2]]
 pooling_layer_opts = [4, 4, 2]
 
+
+[train]
+seed = 1337
+batch_size = 16
+learning_rate = 1e-3
+epochs = 100
+tensorboard = true
+store_array = true # if true numpy arrays are store, if flase png are stored in the database
+save_type = 'png'
 
 [train.filters] # Check https://github.com/juliotrigo/sqlalchemy-filters for filter syntax
     [[train.filters.and]]

@@ -17,6 +17,7 @@ from sqlalchemy_filters import apply_filters
 from .model import generator_from_query_rnd_order, get_engine_and_model, postgres_generator
 from .nn_models import Autoencoder
 from .visualize import show_comparisons
+from .create_figs import SaveType, bytes2array
 
 
 def enable_memory_growth():
@@ -31,15 +32,22 @@ def enable_memory_growth():
 
 
 def create_array_from_img(result):
-    buf = BytesIO(result.image)
-    img = Image.open(buf).convert('RGB')        
-    return tf.keras.preprocessing.image.img_to_array(img) / 255.
+    if result.save_type == SaveType.PNG.value:
+        buf = BytesIO(result.image)
+        img = Image.open(buf).convert('RGB')        
+        return tf.keras.preprocessing.image.img_to_array(img) / 255.
+    elif result.save_type == SaveType.ARRAY.value:
+        return bytes2array(results.image)
+
 
 
 def create_array_from_img_train(result):
-    buf = BytesIO(result.image)
-    img = Image.open(buf).convert('RGB')        
-    img = tf.keras.preprocessing.image.img_to_array(img) / 255.
+    if result.save_type == SaveType.PNG.value:
+        buf = BytesIO(result.image)
+        img = Image.open(buf).convert('RGB')        
+        img = tf.keras.preprocessing.image.img_to_array(img) / 255.
+    elif result.save_type == SaveType.ARRAY.value:
+        img= bytes2array(result.image)
     randint = np.random.randint(8)
     k = randint % 4
     flip = bool(randint // 4)
@@ -60,9 +68,9 @@ def apply_model_ref_files(config, output_dir, reference_database, weights):
     output_dir = pathlib.Path(output_dir) / datetime.datetime.now().strftime('%Y%m%d_%H%M')
     output_dir.mkdir(exist_ok=True, parents=True)
         
-    #if filters := config.get('apply', {}).get('filters', None):
-    #    query = apply_filters(query, filters)
-    #n_images = query.count()
+    if filters := config.get('apply', {}).get('filters', None):
+        query = apply_filters(query, filters)
+    n_images = query.count()
     model = Autoencoder(width=config['map_options']['width'], height=config['map_options']['height'])
     model.load_weights(weights)
     generator = postgres_generator(Session, OSMImages, callback=create_array_from_img)
@@ -96,7 +104,7 @@ def train(config, output_dir, weights=None):
     output_dir = pathlib.Path(output_dir) / datetime.datetime.now().strftime('%Y%m%d_%H%M')
     output_dir.mkdir(exist_ok=True, parents=True)
     
-    query = session.query(OSMImages.image)
+    query = session.query(OSMImages.image, OSMImages.save_type)
     if filters := config['train'].get('filters', None):
         query = apply_filters(query, filters)
     filter_str = str(query.statement.compile(compile_kwargs={"literal_binds": True})).replace('\n', '\n\t')
@@ -162,4 +170,5 @@ def train(config, output_dir, weights=None):
             if step == 0:
                 show_comparisons(output_dir / f'maps_{str(epoch+1).zfill(3)}_train.png', x_batch_test, reconstructed, n_rows=4)
         model.save_weights(str(output_dir / 'models' / f'model_epoch_{str(epoch).zfill(3)}.weights'), overwrite=True)
+        model.save('test_save')
         click.echo(f"mean loss [test] = {loss_metric.result():.4f}")

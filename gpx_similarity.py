@@ -14,9 +14,10 @@ cli.help =  cli.__doc__
 @click.argument('in_files', nargs=-1)
 @click.option('--type-extraction/--no-type-extraction', 'type_extraction', default=False)
 @click.option('--absolute-paths/--relativ-paths', 'expand_paths', default=False)
+@click.option('--skip_existing/--replace_existing', 'skip_existing', default=False)
 @click.option('-d', '--dataset-name', 'dataset_name', default='unknown')
 @click.option('-r', '--route-type', 'route_type', default='unknown')
-def add_train_files(type_extraction, config, dataset_name, route_type, in_files, expand_paths):
+def add_train_files(type_extraction, config, dataset_name, route_type, in_files, expand_paths, skip_existing):
     """Add .gpx files to the training database.
     Add IN_FILES (.gpx files) as images of segements of the route to the train database.
     The settings for the process are taken from CONFIG.
@@ -36,7 +37,8 @@ def add_train_files(type_extraction, config, dataset_name, route_type, in_files,
                     dataset_name=dataset_name,
                     default_route_type=route_type,
                     extract_route_type=type_extraction,
-                    expand_paths=expand_paths)
+                    expand_paths=expand_paths,
+                    skip_existing=skip_existing)
 
 
 @cli.command()  # @cli, not @click!
