@@ -152,10 +152,14 @@ def create_images_train(dbsession,
                 if len(new_entries) >= n_images_per_submit:
                     dbsession.add_all(new_entries)
                     new_entries = []
+                    dbsession.commit()
+
 
             if len(new_entries) > 0:
                 dbsession.add_all(new_entries)
                 new_entries = []
+                dbsession.commit()
+
 
 def get_nn_model(config, weights):
     from .nn_model import Autoencoder
@@ -164,21 +168,29 @@ def get_nn_model(config, weights):
     model_config['height'] = config['map_options']['height']
     model = Autoencoder.from_config(model_config, weights)
     return model
+
     
+def apply_model(model, batch, batch_size, func_name='call', fill_up=True):
+    batch_len = len(batch)
+    if batch_len < batch_size and fill_up:
+        batch += [batch[0]] * (batch_size - batch_len)
+    batch = tf.convert_to_tensor(batch, dtype=tf.float32)
+    result = getattr(model, func_name)(batch)
+    if batch_len < batch_size and fill_up:
+        return result[:batch_len]
+    else:
+        return result
 
 
-def create_images_ref(dbsession,
-                      db_model,
-                      config,
-                      gpx_file,
-                      idx,
-                      route_type='unknown',
-                      dataset='unknown',
-                      route_id=None,
-                      dpi=100,
-                      render_map=geotiler.render_map,
-                      model=None,
-                      save_type='nn'):
+def create_images_reference(dbsession,
+                            db_model,
+                            config,
+                            embedding_model,
+                            gpx_file,
+                            route_id,
+                            save_type='nn',
+                            batch_size=16,
+                            render_map=geotiler.render_map):
     if isinstance(save_type, str):
         save_type = SaveType[save_type.upper()]
     elif isinstance(save_type, int):
@@ -187,29 +199,54 @@ def create_images_ref(dbsession,
         pass
     else:
         raise ValueError('`save_type` has to be of type int, str or SaveType')
-    if save_type == SaveType.NN:
-        save_type = SaveType.ARRAY
-        if model is None:
-            raise ValueError('To save embedded images in the database provide a `model`.')
-    else:
-        apply_model = False
-        nn_model_opts = None
-        nn_model_weights = None
-        batch_size = None
-    remove_existing_entries(session=dbsession,
-                            model=model,
-                            origin=str(gpx_file),
-                            show_route=map_options['show_route'],
-                            zoom=map_options['zoom'],
-                            size=map_options['size'],)
+    map_options = config['map_optionis']
+    remove_existing_entries_images(session=dbsession,
+                                   model=db_model,
+                                   origin=route_id,
+                                   show_route=map_options['show_route'],
+                                   zoom=map_options['zoom'],
+                                   size=map_options['size'],)
     try:
         gpx = gpxpy.parse(gpx_file.open())
     except gpxpy.gpx.GPXXMLSyntaxException:
         click.echo(f'{gpx_file} is not a valid GPX file!')
         return
+    map_options['size'] = (map_options['width'], map_options['height'])
     for track_idx, track in enumerate(gpx.tracks):
         for segment_idx, segment in enumerate(track.segments):
-            pass
+            images, entries = [], []
+            for img, img_info in generate_images_for_segment(segment=segment,
+                                                             size=map_options['size'],
+                                                             zoom=map_options['zoom'],
+                                                             max_distance=map_options['max_distance'],
+                                                             render_map=render_map,
+                                                             show_route=map_options['show_route']):
+                img = tf.keras.preprocessing.image.img_to_array(img) / 255.
+                entry = {
+                    'origin': str(gpx_file),
+                    'track_idx': track_idx,
+                    'segment_idx': segment_idx,
+                    'image': None,
+                    'save_type': save_type.value}
+                entry = {**entry, **img_info}
+                entries.append(entry)
+                images.append(img)
+                if len(entries) == batch_size:
+                    images = apply_model(embedding_model, images, batch_size, fill_up=False, func_name='encode')
+                    for i, entry in entries:
+                        entry['image'] = array2bytes(tf.reshape(images[i], [np.prod(images[i].shape),]).numpy())
+                    dbsession.add_all(entries)
+                    dbsession.commit()
+                    images, entries = [], []
+
+
+            if len(entries) > 0:
+                images = apply_model(embedding_model, images, batch_size, fill_up=False, func_name='encode')
+                for i, entry in entries:
+                    entry['image'] = array2bytes(tf.reshape(images[i], [np.prod(images[i].shape),]).numpy())
+                dbsession.add_all(entries)
+                dbsession.commit()
+
 
 
 
@@ -330,13 +367,15 @@ def add_train_files(config, in_files, dataset_name, default_route_type, extract_
                                  dataset=dataset_name)
 
 
-def add_reference_files(config, reference_database, in_files, dataset_name, default_route_type, extract_route_type, expand_paths, skip_existing=False):
+def add_reference_files(config, weights, reference_database, in_files, dataset_name, default_route_type, extract_route_type, expand_paths, skip_existing=False):
     engine, Routes, OSMImages = get_engine_and_model(reference_database, train=False)
     Session = sessionmaker(bind=engine)
     session = Session()
     client = redis.Redis(**config['redis'])
     downloader = redis_downloader(client)
     render_map = functools.partial(geotiler.render_map, downloader=downloader)
+ 
+    embedding_model = get_nn_model(config, weights)
 
     in_files_prepared = []
     def show_item_gpx(item):
@@ -366,7 +405,7 @@ def add_reference_files(config, reference_database, in_files, dataset_name, defa
                 if session.query(Routes).count() > 0:
                     continue
             else:
-                delete_q = Routes.__table__.delete().where(model.path==str(path)
+                delete_q = Routes.__table__.delete().where(Routes.path==str(path))
                 session.execute(delete_q)
                 session.commit()
             route_entry = Routes(
@@ -388,12 +427,14 @@ def add_reference_files(config, reference_database, in_files, dataset_name, defa
     click.echo('Generating segement images:')
     with click.progressbar(in_files_prepared, item_show_func=show_item_image, show_pos=True) as bar:
         for (path, route_entry_id) in bar:
-            create_images(session,
-                           OSMImages,
-                           path,
-                           route_id=route_entry_id,
-                           show_route=bool(opts['show_route']),
-                           zoom=opts['zoom'],
-                           size=(opts['width'], opts['width']),
-                           max_distance=opts['smoothing_dist'],
-                           dataset=dataset_name)
+            create_images_reference(dbsession=session,
+                                    db_model=OSMImages,
+                                    confg=config,
+                                    embedding_model=embedding_model,
+                                    gpx_file=path,
+                                    route_id=route_entry_id,
+                                    batch_size=config.get('apply', 16),
+                                    render_map=render_map)
+
+
+

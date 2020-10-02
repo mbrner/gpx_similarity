@@ -92,8 +92,6 @@ def apply_model_ref_files(config, output_dir, reference_database, weights):
     click.echo(f"mean loss [apply] = {loss_metric.result():.4f}")
 
 
-
-
 def train(config, output_dir, weights=None):
     engine, OSMImages = get_engine_and_model(**config['postgres'])
     Session = sessionmaker(bind=engine)
@@ -110,7 +108,8 @@ def train(config, output_dir, weights=None):
     filter_str = str(query.statement.compile(compile_kwargs={"literal_binds": True})).replace('\n', '\n\t')
     opts['filters'] = f'\n\t{filter_str}'
 
-    model = Autoencoder(width=config['map_options']['width'], height=config['map_options']['height'])
+    model_config = {**config['model'], 'width': config['map_options']['width'], 'height': config['map_options']['height']}
+    model = Autoencoder(**model_config)
     if weights is not None:
         model.load_weights(weights)
         opts['initial_weights'] = str(weights)
