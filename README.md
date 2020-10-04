@@ -23,6 +23,6 @@ There a more command you can run. Check the help `python gpx_similarity.py CMD -
 DISCLAIMER: I don't claim that the approach I follow in this project is a good/the best approach. For me this was more about the developement process.
 
 
-< !--- HIDE IN CLICK --->
+<!--- HIDE IN CLICK --->
 
 Test
