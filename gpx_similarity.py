@@ -94,13 +94,13 @@ def add_reference_files(type_extraction, config, dataset_name, weights, route_ty
 
 @cli.command()  # @cli, not @click!
 @click.argument('config', type=click.Path(exists=True))
-@click.argument('reference_database', type=click.Path())
+@click.argument('reference_database', type=click.Path(exists=True))
 @click.argument('weights', type=click.Path())
-@click.argument('output_dir', type=click.Path())
-def apply_model_to_reference_files(config, output_dir, reference_database, weights):
-    from src.nn import apply_model_ref_files
+@click.argument('in_file', type=click.Path(exists=True))
+def compare_gpx(config, in_file, reference_database, weights):
+    from src.compare import apply_model_to_file
     config = toml.load(config)
-    apply_model_ref_files(config, output_dir, reference_database, weights)
+    apply_model_to_file(config, in_file, reference_database, weights)
 
 if __name__ == '__main__':
     cli()
