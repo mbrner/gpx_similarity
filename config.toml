@@ -19,7 +19,9 @@ smoothing_dist = 5
 show_route = false
 
 [apply]
-batch_size = 7
+batch_size = 32
+metric = 'sqeuclidean' # Check https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cdist.html for map_options
+aggregation = 'trim_mean::0.1' # 'mean', 'median', 'trim_mean::<percentage>'
 
 [model]
 activation = 'relu'
