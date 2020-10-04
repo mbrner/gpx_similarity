@@ -6,7 +6,9 @@ import toml
 def cli():
     pass
 
-cli.__doc__ = open('README.md').read()
+cli.__doc__ = open('README.md').read().partition('< !-- HIDE IN CLICK --/>')[0]  # The help string in the click CLI is taken from the README.
+                                                                                 # Everything in the README before `< !-- HIDE IN CLICK --/>`
+                                                                                 # is used.
 cli.help =  cli.__doc__
 
 @cli.command()  # @cli, not @click!
@@ -60,12 +62,14 @@ def train_model(config, output_dir, weights):
 @cli.command()
 @click.argument('config', type=click.Path(exists=True))
 @click.argument('reference_database', type=click.Path())
+@click.argument('weights', type=click.Path())
 @click.argument('in_files', nargs=-1)
 @click.option('--type-extraction/--no-type-extraction', 'type_extraction', default=False)
 @click.option('--absolute-paths/--relativ-paths', 'expand_paths', default=False)
+@click.option('--skip_existing/--replace_existing', 'skip_existing', default=False)
 @click.option('-d', '--dataset-name', 'dataset_name', default='unknown')
 @click.option('-r', '--route-type', 'route_type', default='unknown')
-def add_reference_files(type_extraction, config, dataset_name, route_type, in_files, reference_database, expand_paths):
+def add_reference_files(type_extraction, config, dataset_name, weights, route_type, in_files, reference_database, expand_paths, skip_existing):
     from src.create_figs import add_reference_files
     if len(in_files) > 3:
         in_files_str = f"('{in_files[0]}', '{in_files[1]}',... '{in_files[-1]}') [{len(in_files)} files]"
@@ -77,12 +81,14 @@ def add_reference_files(type_extraction, config, dataset_name, route_type, in_fi
     click.echo('\n'.join(msg))
     config = toml.load(config)
     add_reference_files(config=config,
-                        in_files=in_files,
+                        weights=weights,
                         reference_database=reference_database,
+                        in_files=in_files,
                         dataset_name=dataset_name,
                         default_route_type=route_type,
                         extract_route_type=type_extraction,
-                        expand_paths=expand_paths)
+                        expand_paths=expand_paths,
+                        skip_existing=skip_existing)
 
 
 

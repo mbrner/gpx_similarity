@@ -21,3 +21,8 @@ This produces a trained model. A trained model is needed to build up a reference
 There a more command you can run. Check the help `python gpx_similarity.py CMD --help` to learn about their purpose.
 
 DISCLAIMER: I don't claim that the approach I follow in this project is a good/the best approach. For me this was more about the developement process.
+
+
+< !-- HIDE IN CLICK --/>
+
+Test
