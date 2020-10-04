@@ -33,8 +33,10 @@ class SaveType(enum.Enum):
     NN = enum.auto()
 
 
-def array2bytes(arr):
+def array2bytes(arr, flatten=False):
     out = io.BytesIO()
+    if flatten:
+        arr = arr.flatten()
     np.save(out, arr)
     out.seek(0)
     return out.read()
@@ -79,7 +81,7 @@ def df_from_points(points):
 
 def remove_existing_entries_images(session, model, origin, show_route, zoom, size):
     width, height = size
-    delete_q = model.__table__.delete().where(model.path==origin and
+    delete_q = model.__table__.delete().where(model.origin==origin and
                                               model.show_route==show_route and
                                               model.zoom==zoom and
                                               model.width == width and
@@ -162,11 +164,14 @@ def create_images_train(dbsession,
 
 
 def get_nn_model(config, weights):
-    from .nn_model import Autoencoder
-    model_config = config['model']
+    from .nn_models import Autoencoder
+    model_config = {}
     model_config['width'] = config['map_options']['width']
     model_config['height'] = config['map_options']['height']
-    model = Autoencoder.from_config(model_config, weights)
+    opts = config['map_options']
+    model = Autoencoder(**model_config)
+    model.build((config['apply']['batch_size'], opts['width'], opts['height'], opts['channels']))
+    model.load_weights(weights)
     return model
 
     
@@ -199,7 +204,8 @@ def create_images_reference(dbsession,
         pass
     else:
         raise ValueError('`save_type` has to be of type int, str or SaveType')
-    map_options = config['map_optionis']
+    map_options = config['map_options']
+    map_options['size'] = (map_options['width'], map_options['height'])
     remove_existing_entries_images(session=dbsession,
                                    model=db_model,
                                    origin=route_id,
@@ -211,19 +217,18 @@ def create_images_reference(dbsession,
     except gpxpy.gpx.GPXXMLSyntaxException:
         click.echo(f'{gpx_file} is not a valid GPX file!')
         return
-    map_options['size'] = (map_options['width'], map_options['height'])
     for track_idx, track in enumerate(gpx.tracks):
         for segment_idx, segment in enumerate(track.segments):
             images, entries = [], []
             for img, img_info in generate_images_for_segment(segment=segment,
                                                              size=map_options['size'],
                                                              zoom=map_options['zoom'],
-                                                             max_distance=map_options['max_distance'],
+                                                             max_distance=map_options['smoothing_dist'],
                                                              render_map=render_map,
                                                              show_route=map_options['show_route']):
                 img = tf.keras.preprocessing.image.img_to_array(img) / 255.
                 entry = {
-                    'origin': str(gpx_file),
+                    'origin': route_id,
                     'track_idx': track_idx,
                     'segment_idx': segment_idx,
                     'image': None,
@@ -233,21 +238,52 @@ def create_images_reference(dbsession,
                 images.append(img)
                 if len(entries) == batch_size:
                     images = apply_model(embedding_model, images, batch_size, fill_up=False, func_name='encode')
-                    for i, entry in entries:
-                        entry['image'] = array2bytes(tf.reshape(images[i], [np.prod(images[i].shape),]).numpy())
-                    dbsession.add_all(entries)
-                    dbsession.commit()
+                    _create_database_entries(dbsession, db_model, images, entries)
                     images, entries = [], []
-
-
             if len(entries) > 0:
-                images = apply_model(embedding_model, images, batch_size, fill_up=False, func_name='encode')
-                for i, entry in entries:
-                    entry['image'] = array2bytes(tf.reshape(images[i], [np.prod(images[i].shape),]).numpy())
-                dbsession.add_all(entries)
-                dbsession.commit()
+                images = apply_model(embedding_model, images, batch_size, fill_up=True, func_name='encode')
+                _create_database_entries(dbsession, db_model, images, entries)
 
 
+def _create_database_entries(session, model, images, entries):
+    for i, entry in enumerate(entries):
+        entry['image'] = array2bytes(tf.reshape(images[i], [np.prod(images[i].shape),]).numpy(), flatten=True)
+        entries[i] = model(**entry)
+    session.add_all(entries)
+    session.commit()
+
+
+def get_points_simplified(raw_points, max_distance=5, zoom=16, size=(512, 512)):
+    if max_distance is not None:
+        points = simplify_polyline(raw_points, max_distance=max_distance)
+    else:
+        points = raw_points
+    df = df_from_points(points)
+    f_lat, f_long = interp1d(df.distance_total, df.latitude), interp1d(df.distance_total, df.longitude)
+    mm_zero = geotiler.Map(center=(points[0].longitude, points[0].latitude), zoom=zoom, size=size)
+    p_0_long, p_0_lat, p_1_long, p_1_lat = mm_zero.extent
+    distance = GPXTrackPoint(latitude=p_0_lat, longitude=p_1_long).distance_2d(GPXTrackPoint(latitude=p_1_lat, longitude=p_0_long))
+    steps = np.arange(df.distance_total.values[0], df.distance_total.values[-1], distance / (2.*1.41421356237))
+    for d in steps:
+        yield f_long(d), f_lat(d)
+
+
+def inside(mm, lat_min, lat_max, long_min, long_max):
+    p1_long, p1_lat, p2_long, p2_lat = mm.extent
+    lat_min_map, lat_max_map = min(p1_lat,  p2_lat), max(p1_lat,  p2_lat)
+    long_min_map, long_max_map = min(p1_long,  p2_long), max(p1_long,  p2_long)
+    return lat_min_map < lat_min and lat_max_map > lat_max and long_min_map < long_min and long_max_map > long_max
+
+
+def zoom_map(mm, longitude, latitude):
+    lat_min, lat_max = np.min(latitude), np.max(latitude)
+    long_min, long_max = np.min(longitude), np.max(longitude)
+    zoom = mm.zoom
+    while not inside(mm, lat_min, lat_max, long_min, long_max):
+        zoom -= 1 
+        mm = geotiler.Map(center=mm.center, zoom=zoom, size=mm.size)
+    return mm
+    
 
 
 def generate_images_for_segment(segment,
@@ -259,21 +295,9 @@ def generate_images_for_segment(segment,
                                 dpi=100):
     width, height = size
     raw_points = segment.points
-    if max_distance is not None:
-        points = simplify_polyline(raw_points, max_distance=max_distance)
-    else:
-        points = raw_points
-    df = df_from_points(points)
-    f_lat, f_long = interp1d(df.distance_total, df.latitude), interp1d(df.distance_total, df.longitude)
-    mm_zero = geotiler.Map(center=(points[0].longitude, points[0].latitude), zoom=zoom, size=size)
-    p_0_long, p_0_lat, p_1_long, p_1_lat = mm_zero.extent
-    distance = GPXTrackPoint(latitude=p_0_lat, longitude=p_1_long).distance_2d(GPXTrackPoint(latitude=p_1_lat, longitude=p_0_long))
-    steps = np.arange(df.distance_total.values[0], df.distance_total.values[-1], distance / (2.*1.41421356237))
     if show_route:
         raw_points_lat, raw_points_long = points2array(raw_points)
-    for i, d in enumerate(steps):
-        p_lat = f_lat(d)
-        p_long = f_long(d)
+    for i, (p_long, p_lat) in enumerate(get_points_simplified(raw_points)):
         mm = geotiler.Map(center=(p_long, p_lat), zoom=zoom, size=size)
         p_0_long, p_0_lat, p_1_long, p_1_lat = mm.extent
         img = render_map(mm)
@@ -405,7 +429,7 @@ def add_reference_files(config, weights, reference_database, in_files, dataset_n
                 if session.query(Routes).count() > 0:
                     continue
             else:
-                delete_q = Routes.__table__.delete().where(Routes.path==str(path))
+                delete_q = Routes.__table__.delete().where(Routes.path==str(p))
                 session.execute(delete_q)
                 session.commit()
             route_entry = Routes(
@@ -429,11 +453,11 @@ def add_reference_files(config, weights, reference_database, in_files, dataset_n
         for (path, route_entry_id) in bar:
             create_images_reference(dbsession=session,
                                     db_model=OSMImages,
-                                    confg=config,
+                                    config=config,
                                     embedding_model=embedding_model,
                                     gpx_file=path,
                                     route_id=route_entry_id,
-                                    batch_size=config.get('apply', 16),
+                                    batch_size=config.get('apply').get('batch_size', 16),
                                     render_map=render_map)
 
 
