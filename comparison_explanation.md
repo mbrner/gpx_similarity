@@ -1,0 +1,7 @@
+**Explanation**
+
+The upper map shows the route tested against the routes in den database. The route is split into overlapping segments. The size of the segements is determined by the `map_options.zoom` paramter in the config. It is important to use the `map_options.zoom` value matching the value used for training the embedding model. The purple dots in the upper map are the centers of the segements. By clicking a point a segement is selected. The selected segement is highlighten in red.
+
+Once a segement is selected the two plots display a static version of the selected segment (left) and the most similar segement in the database (right).
+
+The lower map shows the most similar route. To determine the most similar route the distances between all test segements and all segements in the database is calculated. The distance is calculated in the latent space of the autoencoder using the metric defined in the config via `apply.metric`. The distance values for each reference route is aggregated by calculation the mean value, the median or a trimmed mean veal. The acutal aggregation functions can be set int the config under the key `apply.aggregation`. If a segment is marked in the upper map, then the size of the points in the lower map corresponds to their similarity to the marked segment - the bigger the more similar.
