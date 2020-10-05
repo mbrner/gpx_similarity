@@ -32,6 +32,7 @@ from .create_figs import (zoom_map,
 from .model import get_engine_and_model
 
 
+HERE = pathlib.Path(__file__).parent
 STYLES = {
     'pre': {
         'border': 'thin lightgrey solid',
@@ -302,15 +303,7 @@ def run_comparison(config, gpx_file, ref_database, weights):
         dcc.Checklist(id='checkbox', options=[{'label': 'Show embedded', 'value': 'embedded'}], value=[]),
         html.H2(f'Most Similar Route: {segments_sim[0]["origin"]}'),
         html.Div([dcc.Graph(figure=fig_sim, id='sim-map'),]),
-        html.Div(className='row', children=[
-            html.Div([
-                dcc.Markdown("""
-                    **Hover Data**
-
-                    Mouse over values in the graph.
-                """),
-                html.Pre(id='click-data', style=STYLES['pre'])
-            ], className='three columns'),])])
+        html.Div([dcc.Markdown((HERE.parent / 'comparison_explanation.md').open().read())], className='three columns')])
 
     @app.callback([Output('fig_seg_ref', 'figure'),
                    Output('fig_seg_sim', 'figure'),
