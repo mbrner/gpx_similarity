@@ -24,7 +24,7 @@ def add_train_files(type_extraction, config, dataset_name, route_type, in_files,
     Add IN_FILES (.gpx files) as images of segements of the route to the train database.
     The settings for the process are taken from CONFIG.
     BEWARE: postgres and redis have to be running for all training steps."""
-    from src.create_figs import add_train_files
+    from source.create_figs import add_train_files
     if len(in_files) > 3:
         in_files_str = f"('{in_files[0]}', '{in_files[1]}',... '{in_files[-1]}') [{len(in_files)} files]"
     else:
@@ -54,7 +54,7 @@ def train_model(config, output_dir, weights):
     """Train the model.
     The options for the training are taken from CONFIG.
     Training infos and model weights are saved in the OUTPUT_DIR"""
-    from src.nn import train
+    from source.nn import train
     config = toml.load(config)
     train(config, output_dir, weights)
 
@@ -70,7 +70,7 @@ def train_model(config, output_dir, weights):
 @click.option('-d', '--dataset-name', 'dataset_name', default='unknown')
 @click.option('-r', '--route-type', 'route_type', default='unknown')
 def add_reference_files(type_extraction, config, dataset_name, weights, route_type, in_files, reference_database, expand_paths, skip_existing):
-    from src.create_figs import add_reference_files
+    from source.create_figs import add_reference_files
     if len(in_files) > 3:
         in_files_str = f"('{in_files[0]}', '{in_files[1]}',... '{in_files[-1]}') [{len(in_files)} files]"
     else:
@@ -98,9 +98,9 @@ def add_reference_files(type_extraction, config, dataset_name, weights, route_ty
 @click.argument('weights', type=click.Path())
 @click.argument('in_file', type=click.Path(exists=True))
 def compare_gpx(config, in_file, reference_database, weights):
-    from src.compare import apply_model_to_file
+    from source.compare import run_comparison
     config = toml.load(config)
-    apply_model_to_file(config, in_file, reference_database, weights)
+    run_comparison(config, in_file, reference_database, weights)
 
 if __name__ == '__main__':
     cli()
