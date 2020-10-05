@@ -1,0 +1,23 @@
+name: gpx_similarity
+channels:
+  - defaults
+dependencies:
+  - python=3.8
+  - pip
+  - tensorflow-gpu
+  - scipy
+  - numpy
+  - matplotlib
+  - sqlalchemy
+  - click
+  - redis-py
+  - psycopg2
+  - toml
+  - pandas
+  - ipywidgets
+  - pip:
+    - plotly
+    - dash
+    - geotiler
+    - gpxpy
+    - sqlalchemy-filters
