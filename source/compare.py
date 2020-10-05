@@ -32,9 +32,6 @@ from .create_figs import (zoom_map,
 from .model import get_engine_and_model
 
 
-tf.autograph.set_verbosity(0)
-# Verbosity is now 0
-
 STYLES = {
     'pre': {
         'border': 'thin lightgrey solid',
@@ -176,7 +173,7 @@ def apply_model_to_file(config, gpx_file, ref_database, weights):
 
     map_options = config['map_options']
     map_options['size'] = (map_options['width'], map_options['height'])
-    click.echo('Generating segment images:')
+    click.echo(f'Generating segment images for the test gpx: {gpx_file}...')
     try:
         gpx = gpxpy.parse(gpx_file.open())
     except gpxpy.gpx.GPXXMLSyntaxException:
@@ -221,7 +218,7 @@ def apply_model_to_file(config, gpx_file, ref_database, weights):
                     entry['image_decoded'] = img_decoded.numpy()
                     segments.append(entry)
     test_images = np.asarray([entry['image_encoded'] for entry in segments])
-    click.echo('Loading Segments from Database')
+    click.echo(f'Loading date from reference database: {ref_database}...')
     engine, Routes, Segments = get_engine_and_model(ref_database, train=False)
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -235,9 +232,12 @@ def apply_model_to_file(config, gpx_file, ref_database, weights):
     images = np.asarray(images)
     route_ids = np.asarray(route_ids)
     segment_ids = np.asarray(segment_ids)
+    click.echo(f'Calculating distance metric: `{config["apply"]["metric"]}`...')
     matrix = cdist(test_images, images, metric=config['apply']['metric'])
 
+    click.echo(f'Determine best matching route via aggregrate of segments with `{config["apply"]["aggregation"]}`...')
     segments_sim, matrix_sim, compressed_gpx_file = generate_segements_sim(config, session, Segments, Routes, segment_ids, route_ids, matrix)
+    click.echo(f'Preparing images of similar segments...')
     segments_sim_global = generate_img_sim_global(config, session, Segments, matrix, segment_ids, embedding_model, render_map)
 
     fig_test = create_plotly_fig_with_line(config, gpx)
@@ -292,10 +292,10 @@ def run_comparison(config, gpx_file, ref_database, weights):
         html.H2(f'Loaded File: {gpx_file}'),
         html.Div([dcc.Graph(figure=fig_test, id='main-map'),]),
 
-        html.Div([html.Div([html.H5('Selected Segment'),
+        html.Div([html.Div([html.H5('Selected Segment in Test Route'),
                             dcc.Graph(id='fig_seg_ref', figure=fig_seg_test)],
                            className="six columns"),
-                  html.Div([html.H5('Most Similar Segment'),
+                  html.Div([html.H5('Most Similar Segment in Database'),
                             dcc.Graph(id='fig_seg_sim', figure=fig_seg_sim)],
                            className="six columns"),],
                 className="row"),
@@ -355,5 +355,6 @@ def run_comparison(config, gpx_file, ref_database, weights):
         fig_seg_sim = go.Figure(px.imshow(img_sim))
         return fig_seg_test, fig_seg_sim, figure_test, figure_sim
 
+    click.echo(f'Starting plotly+Dash visualization...')
     app.title = 'GPX Similarity'
     app.run_server(debug=True, use_reloader=False) 

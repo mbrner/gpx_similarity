@@ -98,7 +98,12 @@ def add_reference_files(type_extraction, config, dataset_name, weights, route_ty
 @click.argument('weights', type=click.Path())
 @click.argument('in_file', type=click.Path(exists=True))
 def compare_gpx(config, in_file, reference_database, weights):
+    import os
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+    import tensorflow as tf
     from source.compare import run_comparison
+    #tf.logging.set_verbosity(tf.logging.ERROR)
+    click.echo(f'Loading config: {config}')
     config = toml.load(config)
     run_comparison(config, in_file, reference_database, weights)
 
