@@ -180,7 +180,6 @@ def apply_model(model, batch, batch_size, func_name='call', fill_up=True):
     if batch_len < batch_size and fill_up:
         batch += [batch[0]] * (batch_size - batch_len)
     batch = tf.convert_to_tensor(batch, dtype=tf.float32)
-    print(batch.shape)
     result = getattr(model, func_name)(batch)
     if batch_len < batch_size and fill_up:
         return result[:batch_len]

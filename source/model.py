@@ -39,7 +39,6 @@ def get_engine_and_model(database_name, user=None, password=None, host=None, por
     else:
         database_path = pathlib.Path(database_name).absolute().with_suffix('.db')
         uri = f'sqlite+pysqlite:///{database_path}'
-        print(f'{uri=}')
         
     engine = create_engine(uri)
 
