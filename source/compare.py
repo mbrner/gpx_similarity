@@ -236,7 +236,7 @@ def apply_model_to_file(config, gpx_file, ref_database, weights):
     click.echo(f'Calculating distance metric: `{config["apply"]["metric"]}`...')
     matrix = cdist(test_images, images, metric=config['apply']['metric'])
 
-    click.echo(f'Determine best matching route via aggregrate of segments with `{config["apply"]["aggregation"]}`...')
+    click.echo(f'Determine best matching route via aggregation of segments with `{config["apply"]["aggregation"]}`...')
     segments_sim, matrix_sim, compressed_gpx_file = generate_segements_sim(config, session, Segments, Routes, segment_ids, route_ids, matrix)
     click.echo(f'Preparing images of similar segments...')
     segments_sim_global = generate_img_sim_global(config, session, Segments, matrix, segment_ids, embedding_model, render_map)
@@ -287,7 +287,7 @@ def run_comparison(config, gpx_file, ref_database, weights):
         px.imshow(np.zeros((config['map_options']['width'], config['map_options']['height'], 3)))
     )
     external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-    app = dash.Dash('GPX Similarity', external_stylesheets=external_stylesheets,)
+    app = dash.Dash('GPX Similarity')#, external_stylesheets=external_stylesheets,)
     app.layout = html.Div([
         dcc.Store(id='clicked-data'),
         html.H2(f'Loaded File: {gpx_file}'),
@@ -348,6 +348,6 @@ def run_comparison(config, gpx_file, ref_database, weights):
         fig_seg_sim = go.Figure(px.imshow(img_sim))
         return fig_seg_test, fig_seg_sim, figure_test, figure_sim
 
-    click.echo(f'Starting plotly+Dash visualization...')
+    click.echo(f'Starting Dash+plotly visualization...')
     app.title = 'GPX Similarity'
     app.run_server(debug=True, use_reloader=False) 
