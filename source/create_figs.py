@@ -164,7 +164,6 @@ def create_images_train(dbsession,
 
 
 def get_nn_model(config, weights):
-    print(f'{config=}\n{weights=}')
     from .nn_models import Autoencoder
     model_config = {}
     model_config['width'] = config['map_options']['width']
