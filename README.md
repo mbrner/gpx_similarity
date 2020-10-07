@@ -39,10 +39,10 @@ The actual comparison of an gpx file with a database of stored files starts a Da
 ### Screenshots
 
 #### Raw images of the most similar segements
-![Visualization raw segments](https://github.com/mbrner/gpx_similarity/raw/master/images/screen_1.png)
+![Visualization raw segments](./images/screen_1.png)
 
 #### Encoded+decoded version of the most similar segments
-![Visualization embedded segments](https://github.com/mbrner/gpx_similarity/raw/master/images/screen_2.png)
+![Visualization embedded segments](./images/screen_2.png)
 
 ## Training
 
