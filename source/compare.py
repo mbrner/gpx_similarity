@@ -31,7 +31,6 @@ from .create_figs import (zoom_map,
                           df_from_points)
 from .model import get_engine_and_model
 
-
 HERE = pathlib.Path(__file__).parent
 STYLES = {
     'pre': {
@@ -40,6 +39,7 @@ STYLES = {
     }
 }
 
+ASSESTS_PATH = HERE / 'dash_assets'
 
 COLOR_UNMARKED = '#503047'
 COLOR_MARKED = '#C05746'
@@ -287,7 +287,7 @@ def run_comparison(config, gpx_file, ref_database, weights):
         px.imshow(np.zeros((config['map_options']['width'], config['map_options']['height'], 3)))
     )
     external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-    app = dash.Dash('GPX Similarity')#, external_stylesheets=external_stylesheets,)
+    app = dash.Dash('GPX Similarity', assets_folder=ASSESTS_PATH)
     app.layout = html.Div([
         dcc.Store(id='clicked-data'),
         html.H2(f'Loaded File: {gpx_file}'),

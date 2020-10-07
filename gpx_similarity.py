@@ -1,12 +1,17 @@
 import click
 import toml
+import pathlib
+
+
+HERE = pathlib.Path(__file__).parent
+
 
 
 @click.group()
 def cli():
     pass
 
-cli.__doc__ = open('README.md').read().partition('< !-- HIDE IN CLICK --/>')[0]  # The help string in the click CLI is taken from the README.
+cli.__doc__ = (HERE / 'README.md').open().read().partition('<!--- HIDE IN CLICK --->')[0]  # The help string in the click CLI is taken from the README.
                                                                                  # Everything in the README before `< !-- HIDE IN CLICK --/>`
                                                                                  # is used.
 cli.help =  cli.__doc__
@@ -70,6 +75,8 @@ def train_model(config, output_dir, weights):
 @click.option('-d', '--dataset-name', 'dataset_name', default='unknown')
 @click.option('-r', '--route-type', 'route_type', default='unknown')
 def add_reference_files(type_extraction, config, dataset_name, weights, route_type, in_files, reference_database, expand_paths, skip_existing):
+    import os
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
     from source.create_figs import add_reference_files
     if len(in_files) > 3:
         in_files_str = f"('{in_files[0]}', '{in_files[1]}',... '{in_files[-1]}') [{len(in_files)} files]"
