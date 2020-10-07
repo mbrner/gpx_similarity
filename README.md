@@ -39,7 +39,15 @@ The actual comparison of an gpx file with a database of stored files starts a Da
 ### Screenshots
 
 #### Raw images of the most similar segements
-![Test Image 4](https://github.com/mbrner/gpx_similarity/raw/master/images/screen_1.png)
+![Visualization raw segments](./images/screen_1.png)
 
 #### Encoded+decoded version of the most similar segments
-![Test Image 4](https://github.com/mbrner/gpx_similarity/raw/master/images/screen_2.png)
+![Visualization embedded segments](./images/screen_2.png)
+
+## Training
+
+As stated in the first section, the comparison of segments is done in the latent space of an convolutional autoencoder. The changing embedding of the segments images looks like this:
+
+
+![Training process](./images/training_process.gif)
+
