@@ -303,7 +303,7 @@ def run_comparison(config, gpx_file, ref_database, weights):
         dcc.Checklist(id='checkbox', options=[{'label': 'Show embedded', 'value': 'embedded'}], value=[]),
         html.H2(f'Most Similar Route: {segments_sim[0]["origin"]}'),
         html.Div([dcc.Graph(figure=fig_sim, id='sim-map'),]),
-        html.Div([dcc.Markdown((HERE.parent / 'comparison_explanation.md').open().read())], className='three columns')])
+        html.Div([dcc.Markdown((HERE.parent / 'assets' / 'comparison_explanation.md').open().read())], className='three columns')])
 
     @app.callback([Output('fig_seg_ref', 'figure'),
                    Output('fig_seg_sim', 'figure'),
