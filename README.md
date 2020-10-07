@@ -35,7 +35,7 @@ To try the code simple go to the example: https://github.com/mbrner/gpx_similari
 The actual comparison of an gpx file with a database of stored files starts a Dash+Plotly webserver:
 
 #### Raw images of the most similar segements
-![Test Image 4](https://https://github.com/mbrner/gpx_similarity/blob/master/images/screen_1.png)
+![Test Image 4](https://github.com/mbrner/gpx_similarity/raw/master/images/screen_1.png)
 
 #### Encoded+decoded version of the most similar segments
-![Test Image 4](https://https://github.com/mbrner/gpx_similarity/blob/master/images/screen_2.png)
+![Test Image 4](https://github.com/mbrner/gpx_similarity/raw/master/images/screen_2.png)
