@@ -26,13 +26,17 @@ DISCLAIMER: I don't claim that the approach I follow in this project is a good/t
 <!--- HIDE IN CLICK --->
 ## Install
 
-I recommend to use one of the environment.yaml files to create a conda env. In the created env this project can be installed via `pip install .`. After installation the CLI of the project can be used via `$ gpx_similarity`.
+I recommend to use one of the environment.yaml files to create a conda env. In the created env this project can be installed via 
+```pip install .```.
+After installation the CLI of the project can be used via `$ gpx_similarity`.
 
 ## Usage
 
 To try the code simple go to the example: https://github.com/mbrner/gpx_similarity/example
 
-The actual comparison of an gpx file with a database of stored files starts a Dash+Plotly webserver:
+The actual comparison of an gpx file with a database of stored files starts a Dash+Plotly webserver. A more detailed explanation of the visualization is shown at the bottom of the Plotly site.
+
+### Screenshots
 
 #### Raw images of the most similar segements
 ![Test Image 4](https://github.com/mbrner/gpx_similarity/raw/master/images/screen_1.png)
