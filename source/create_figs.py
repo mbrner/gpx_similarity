@@ -163,7 +163,7 @@ def create_images_train(dbsession,
                 dbsession.commit()
 
 
-def get_nn_model(config, weights):
+def get_nn_model(config, weights=None):
     from .nn_models import Autoencoder
     model_config = {}
     model_config['width'] = config['map_options']['width']
@@ -171,20 +171,21 @@ def get_nn_model(config, weights):
     opts = config['map_options']
     model = Autoencoder(**model_config)
     model.build((config['apply']['batch_size'], opts['width'], opts['height'], opts['channels']))
-    model.load_weights(weights)
+    if weights is None:
+        model.load_weights(weights)
     return model
 
     
-def apply_model(model, batch, batch_size, func_name='call', fill_up=True):
+def apply_model(model, batch, batch_size, fill_up=True):
     batch_len = len(batch)
     if batch_len < batch_size and fill_up:
         batch += [batch[0]] * (batch_size - batch_len)
     batch = tf.convert_to_tensor(batch, dtype=tf.float32)
-    result = getattr(model, func_name)(batch)
+    decoded, mu, log_var = model(batch)
     if batch_len < batch_size and fill_up:
-        return result[:batch_len]
+        return decoded[:batch_len], mu[:batch_len], log_var[:batch_len]
     else:
-        return result
+        return decoded, mu, log_var 
 
 
 def create_images_reference(dbsession,
@@ -238,11 +239,13 @@ def create_images_reference(dbsession,
                 entries.append(entry)
                 images.append(img)
                 if len(entries) == batch_size:
-                    images = apply_model(embedding_model, images, batch_size, fill_up=False, func_name='encode')
+                    reconstructed_images, mu, log_var = apply_model(embedding_model, images, batch_size, fill_up=False)
+                    images = [np.array((mu_i, log_var_i)) for mu_i, log_var_i in zip(log_var, mu)]
                     _create_database_entries(dbsession, db_model, images, entries)
                     images, entries = [], []
             if len(entries) > 0:
-                images = apply_model(embedding_model, images, batch_size, fill_up=True, func_name='encode')
+                reconstructed_images, mu, log_var = apply_model(embedding_model, images, batch_size, fill_up=True)
+                images = [np.array((mu_i, log_var_i)) for mu_i, log_var_i in zip(log_var, mu)]
                 _create_database_entries(dbsession, db_model, images, entries)
 
 
@@ -284,7 +287,6 @@ def zoom_map(mm, longitude, latitude):
         zoom -= 1 
         mm = geotiler.Map(center=mm.center, zoom=zoom, size=mm.size)
     return mm
-    
 
 
 def generate_images_for_segment(segment,
@@ -392,15 +394,16 @@ def add_train_files(config, in_files, dataset_name, default_route_type, extract_
                                  dataset=dataset_name)
 
 
-def add_reference_files(config, weights, reference_database, in_files, dataset_name, default_route_type, extract_route_type, expand_paths, skip_existing=False):
+def add_reference_files(config, checkpoint, reference_database, in_files, dataset_name, default_route_type, extract_route_type, expand_paths, skip_existing=False):
     engine, Routes, OSMImages = get_engine_and_model(reference_database, train=False)
     Session = sessionmaker(bind=engine)
     session = Session()
     client = redis.Redis(**config['redis'])
     downloader = redis_downloader(client)
     render_map = functools.partial(geotiler.render_map, downloader=downloader)
- 
-    embedding_model = get_nn_model(config, weights)
+
+    click.echo(f'Loading model from: {checkpoint}!')
+    embedding_model = tf.keras.models.load_model(checkpoint)
 
     in_files_prepared = []
     def show_item_gpx(item):
@@ -409,7 +412,6 @@ def add_reference_files(config, weights, reference_database, in_files, dataset_n
         else:
             return ''
 
-    opts = config['map_options']
     click.echo('Adding GPX Files to Database:')
     with click.progressbar(in_files, item_show_func=show_item_gpx, show_pos=True) as bar:
         for p in bar:

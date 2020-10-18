@@ -90,6 +90,7 @@ def generate_segements_sim(config, session, Segments, Routes, segment_ids, route
     for idx in segment_ids[route_mask]:
         segment = session.query(Segments).filter(Segments.id == int(idx)).first()
         mm = geotiler.Map(extent=(segment.p_0_long, segment.p_0_lat, segment.p_1_long, segment.p_1_lat), zoom=map_options['zoom'])
+        mm = geotiler.Map(center=mm.center, zoom=map_options['zoom'], size=(map_options['width'], map_options['width']))
         segments.append({'point': GPXTrackPoint(latitude=mm.center[1], longitude=mm.center[0]), 'origin': route_entry.path})
     return segments, matrix_sim, route_entry.gpx_file
 
@@ -108,23 +109,24 @@ def generate_img_sim_global(config, session, Segments, matrix, segment_ids, embe
         entry = session.query(Segments).filter(Segments.id == int(idx)).first()
         entry = row2dict(entry)
         mm = geotiler.Map(extent=(entry['p_0_long'], entry['p_0_lat'], entry['p_1_long'], entry['p_1_lat']), zoom=map_options['zoom'])
+        mm = geotiler.Map(center=mm.center, zoom=map_options['zoom'], size=(map_options['width'], map_options['width']))
         entry['point'] = GPXTrackPoint(latitude=mm.center[1], longitude=mm.center[0])
         entry['image_raw'] = render_map(mm).convert('RGB')
-        img_encoded = tf.reshape(tf.convert_to_tensor(bytes2array(entry['image']), dtype=tf.float32), map_options['encoding_shape'])
-        entry['image_encoded'] = img_encoded
+        entry['image_encoded'] = tf.reshape(tf.convert_to_tensor(bytes2array(entry['image']), dtype=tf.float32), map_options['encoding_shape'])
+        entry['image_for_reconstruction'] = tf.keras.preprocessing.image.img_to_array(entry['image_raw']) / 255.
         entry['dist'] = value
         del entry['image']
         entries.append(entry)
-        images.append(entry['image_encoded'])
+        images.append(entry['image_for_reconstruction'])
         if len(images) == batch_size:
-            images_decoded = apply_model(embedding_model, images, batch_size, fill_up=False, func_name='decode')
-            for img_decoded, entry in zip(images_decoded, entries):
+            reconstructed_images, *_ = apply_model(embedding_model, images, batch_size, fill_up=False)
+            for img_decoded, entry in zip(reconstructed_images, entries):
                 entry['image_decoded'] = img_decoded.numpy()
                 segments.append(entry)
             images, entries = [], []
     if len(entries) > 0:
-        images_decoded = apply_model(embedding_model, images, batch_size, fill_up=True, func_name='decode')
-        for img_decoded, entry in zip(images_decoded, entries):
+        reconstructed_images, *_ = apply_model(embedding_model, images, batch_size, fill_up=True)
+        for img_decoded, entry in zip(reconstructed_images, entries):
             entry['image_decoded'] = img_decoded.numpy()
             segments.append(entry)
     return segments
@@ -164,9 +166,10 @@ def create_plotly_fig_with_line(config, gpx):
     fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
     return fig
 
-def apply_model_to_file(config, gpx_file, ref_database, weights):
+def apply_model_to_file(config, gpx_file, ref_database, checkpoint):
     gpx_file = pathlib.Path(gpx_file)
-    embedding_model = get_nn_model(config, weights)
+    click.echo(f'Loading model from: {checkpoint}!')
+    embedding_model = tf.keras.models.load_model(checkpoint)
     client = redis.Redis(**config['redis'])
     downloader = redis_downloader(client)
     render_map = functools.partial(geotiler.render_map, downloader=downloader)
@@ -202,20 +205,20 @@ def apply_model_to_file(config, gpx_file, ref_database, weights):
                 images.append(img_embedding)
                 entries.append(entry)
                 if len(images) == batch_size:
-                    images = apply_model(embedding_model, images, batch_size, fill_up=False, func_name='encode')
-                    images_decoded = apply_model(embedding_model, [*images], batch_size, fill_up=False, func_name='decode')
-                    for i, (img_encoded, img_decoded, entry) in enumerate(zip(images, images_decoded, entries)):
+                    reconstructed_images, mu, log_var = apply_model(embedding_model, images, batch_size, fill_up=False)
+                    images = [np.array((mu_i, log_var_i)) for mu_i, log_var_i in zip(log_var, mu)]
+                    for i, (img_encoded, img_decoded, entry) in enumerate(zip(images, reconstructed_images, entries)):
                         if i == 0:
                             map_options['encoding_shape'] = img_encoded.shape
-                        entry['image_encoded'] = tf.reshape(img_encoded, [np.prod(img_encoded.shape),]).numpy().flatten()
+                        entry['image_encoded'] = img_encoded
                         entry['image_decoded'] = img_decoded.numpy()
                         segments.append(entry)
                     images, entries = [], []
             if len(entries) > 0:
-                images = apply_model(embedding_model, images, batch_size, fill_up=True, func_name='encode')
-                images_decoded = apply_model(embedding_model, [*images], batch_size, fill_up=True, func_name='decode')
-                for img_encoded, img_decoded, entry in zip(images, images_decoded, entries):
-                    entry['image_encoded'] = tf.reshape(img_encoded, [np.prod(img_encoded.shape),]).numpy().flatten()
+                reconstructed_images, mu, log_var = apply_model(embedding_model, images, batch_size, fill_up=False)
+                images = [np.array((mu_i, log_var_i)) for mu_i, log_var_i in zip(log_var, mu)]
+                for img_encoded, img_decoded, entry in zip(images, reconstructed_images, entries):
+                    entry['image_encoded'] = img_encoded
                     entry['image_decoded'] = img_decoded.numpy()
                     segments.append(entry)
     test_images = np.asarray([entry['image_encoded'] for entry in segments])
@@ -227,15 +230,24 @@ def apply_model_to_file(config, gpx_file, ref_database, weights):
     route_ids = []
     segment_ids = []
     for seg in session.query(Segments.image, Segments.origin, Segments.id):
-        images.append(bytes2array(seg.image))
+        images.append(bytes2array(seg.image).reshape(map_options['encoding_shape']))
         route_ids.append(seg.origin)
         segment_ids.append(seg.id)
     images = np.asarray(images)
     route_ids = np.asarray(route_ids)
-    segment_ids = np.asarray(segment_ids)
-    click.echo(f'Calculating distance metric: `{config["apply"]["metric"]}`...')
-    matrix = cdist(test_images, images, metric=config['apply']['metric'])
+    segment_ids = np.asarray(segment_ids)    
+    click.echo(f'Calculating Bhattacharyya distance...')
 
+    def bhattacharyya_distance(vec_a, vec_b):
+        mu_a, var_a = vec_a[:len(vec_a)//2], np.exp(vec_a[len(vec_a)//2:])
+        mu_b, var_b = vec_b[:len(vec_b)//2], np.exp(vec_b[len(vec_b)//2:])
+        result = 0.25 * np.log(0.25*(var_a/var_b+var_b/var_a+2)) + 0.25 * ((mu_a-mu_b)**2 / (var_a+var_b))
+        return np.mean(result)
+
+
+    test_images_reshaped = test_images.reshape(test_images.shape[0], test_images.shape[1]*test_images.shape[2])
+    images_reshaped = images.reshape(images.shape[0], images.shape[1]*images.shape[2])
+    matrix = cdist(test_images_reshaped, images_reshaped, metric=bhattacharyya_distance)
     click.echo(f'Determine best matching route via aggregation of segments with `{config["apply"]["aggregation"]}`...')
     segments_sim, matrix_sim, compressed_gpx_file = generate_segements_sim(config, session, Segments, Routes, segment_ids, route_ids, matrix)
     click.echo(f'Preparing images of similar segments...')
@@ -247,8 +259,8 @@ def apply_model_to_file(config, gpx_file, ref_database, weights):
     return fig_test, fig_sim, segments, segments_sim, segments_sim_global, matrix_sim
 
 
-def run_comparison(config, gpx_file, ref_database, weights):
-    fig_test, fig_sim, segments_test, segments_sim, segments_sim_global, matrix_sim = apply_model_to_file(config, gpx_file, ref_database, weights)
+def run_comparison(config, gpx_file, ref_database, checkpoint):
+    fig_test, fig_sim, segments_test, segments_sim, segments_sim_global, matrix_sim = apply_model_to_file(config, gpx_file, ref_database, checkpoint)
 
     log_matrix = np.log2(1. / matrix_sim)
     mean, std = np.mean(log_matrix), np.std(log_matrix)
@@ -303,7 +315,7 @@ def run_comparison(config, gpx_file, ref_database, weights):
         dcc.Checklist(id='checkbox', options=[{'label': 'Show embedded', 'value': 'embedded'}], value=[]),
         html.H2(f'Most Similar Route: {segments_sim[0]["origin"]}'),
         html.Div([dcc.Graph(figure=fig_sim, id='sim-map'),]),
-        html.Div([dcc.Markdown((HERE.parent / 'assets' / 'comparison_explanation.md').open().read())], className='three columns')])
+        html.Div([dcc.Markdown((HERE / 'dash_assets' / 'comparison_explanation.md').open().read())], className='three columns')])
 
     @app.callback([Output('fig_seg_ref', 'figure'),
                    Output('fig_seg_sim', 'figure'),

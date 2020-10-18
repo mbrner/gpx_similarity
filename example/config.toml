@@ -29,15 +29,17 @@ padding = 'same'
 dropout_rate = 0.2
 conv_layer_opts = [[32, 8], [16, 4], [8, 2]]
 pooling_layer_opts = [4, 4, 2]
+mse_loss_factor = 1000
 
 
 [train]
 seed = 1337
-batch_size = 16
-learning_rate = 1e-3
-epochs = 10
+batch_size = 32
+learning_rate = [-5, -7]
+epochs = 20
 tensorboard = true
 save_type = 'png'
+train_test_split = 0.1
 
 [train.filters] # Check https://github.com/juliotrigo/sqlalchemy-filters for filter syntax
     [[train.filters.and]]

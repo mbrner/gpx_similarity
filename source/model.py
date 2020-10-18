@@ -1,4 +1,4 @@
-import pathlib
+import pathlib, copy
 from functools import partial
 
 from sqlalchemy import create_engine
@@ -152,8 +152,11 @@ def _postgres_generator_rnd(query, offset, total_limit, entries_per_query, seed=
         offset += entries_per_query     
 
 
-def generator_from_query_rnd_order(query, train_test_split=0.3, test=False, entries_per_query=1000, seed=None, return_entries=False, callback=None):
-    entries = query.count()
+def generator_from_query_rnd_order(query, train_test_split=0.3, test=False, entries_per_query=1000, seed=None, callback=None, n_entries=None):
+    if n_entries is None:
+        entries = query.count()
+    else:
+        entries = n_entries
     test_offset = int(entries * train_test_split + 0.5)
     if test:
         total_limit = test_offset
@@ -163,15 +166,18 @@ def generator_from_query_rnd_order(query, train_test_split=0.3, test=False, entr
         total_limit = None
         offset = test_offset
         length = entries - test_offset
-        
-    generator = _postgres_generator_rnd(query=query, 
-                                        offset=offset,
-                                        total_limit=total_limit,
-                                        entries_per_query=entries_per_query,
-                                        seed=seed,
-                                        callback=callback)
-    if return_entries:
-        return generator, length
-    else:
-        return generator
+
+    def generator(only_create=False):
+        gen = _postgres_generator_rnd(query=query, 
+                                      offset=offset,
+                                      total_limit=total_limit,
+                                      entries_per_query=entries_per_query,
+                                      seed=seed,
+                                      callback=callback)
+        if only_create:
+            return gen
+        else:
+            for x in gen:
+                yield x, x
+    return generator, length
         
