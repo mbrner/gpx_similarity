@@ -298,7 +298,6 @@ def run_comparison(config, gpx_file, ref_database, checkpoint):
     fig_seg_sim = go.Figure(
         px.imshow(np.zeros((config['map_options']['width'], config['map_options']['height'], 3)))
     )
-    external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
     app = dash.Dash('GPX Similarity', assets_folder=ASSESTS_PATH)
     app.layout = html.Div([
         dcc.Store(id='clicked-data'),

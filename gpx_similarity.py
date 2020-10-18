@@ -51,18 +51,18 @@ def add_train_files(type_extraction, config, dataset_name, route_type, in_files,
 @cli.command()  # @cli, not @click!
 @click.argument('config', type=click.Path(exists=True))
 @click.argument('output_dir', type=click.Path())
-@click.option('-c', '--check_point', 'check_point',
+@click.option('-c', '--checkpoint', 'checkpoint',
               default=None,
               type=click.Path(exists=True),
-              help='Initial weights for the model. If None are provided the '
+              help='Initial chcpoint for the model. If None are provided the '
                    'model weights are initialized random.')
-def train_model(config, output_dir, check_point):
+def train_model(config, output_dir, checkpoint):
     """Train the model.
     The options for the training are taken from CONFIG.
     Training infos and model weights are saved in the OUTPUT_DIR"""
     from source.nn_train import train
     config = toml.load(config)
-    train(config, output_dir, check_point)
+    train(config, output_dir, checkpoint)
 
 
 @cli.command()
@@ -76,6 +76,11 @@ def train_model(config, output_dir, check_point):
 @click.option('-d', '--dataset-name', 'dataset_name', default='unknown')
 @click.option('-r', '--route-type', 'route_type', default='unknown')
 def add_reference_files(type_extraction, config, dataset_name, checkpoint, route_type, in_files, reference_database, expand_paths, skip_existing):
+    """Add .gpx files to the reference database.
+    Add IN_FILES (.gpx files) as images of segements of the route to the REFERENCE_DATABASE.
+    The settings for the process are taken from CONFIG.
+    The segemnts are added to the database after encoding with the model provided via training CHECKPOINT.
+    """
     import os
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
     from source.create_figs import add_reference_files
@@ -103,9 +108,15 @@ def add_reference_files(type_extraction, config, dataset_name, checkpoint, route
 @cli.command()  # @cli, not @click!
 @click.argument('config', type=click.Path(exists=True))
 @click.argument('reference_database', type=click.Path(exists=True))
-@click.argument('weights', type=click.Path())
+@click.argument('checkpoint', type=click.Path())
 @click.argument('in_file', type=click.Path(exists=True))
-def compare_gpx(config, in_file, reference_database, weights):
+def compare_gpx(config, in_file, reference_database, checkpoint):
+    """Run a comparison of a gpx-file against a reference database and show result in the browser.
+    Compare a gpx file against a REFERENCE_DATABASE.
+    The provided IN_FILE (.gpx file) is compared segment-wise against the REFERENCE_DATABASE.
+    The comparison in done via calculating the `Bhattacharyya` distance in the latent space.
+    For reasonable result us the CHECKPOINT also used to create the REFERENCE_DATABASE.
+    """
     import os
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
     import tensorflow as tf
@@ -113,7 +124,7 @@ def compare_gpx(config, in_file, reference_database, weights):
     #tf.logging.set_verbosity(tf.logging.ERROR)
     click.echo(f'Loading config: {config}')
     config = toml.load(config)
-    run_comparison(config, in_file, reference_database, weights)
+    run_comparison(config, in_file, reference_database, checkpoint)
 
 if __name__ == '__main__':
     cli()

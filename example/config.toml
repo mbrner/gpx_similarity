@@ -35,7 +35,7 @@ mse_loss_factor = 1000
 [train]
 seed = 1337
 batch_size = 32
-learning_rate = [-5, -7]
+learning_rate = [-3, -7]
 epochs = 20
 tensorboard = true
 save_type = 'png'

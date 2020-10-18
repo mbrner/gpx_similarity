@@ -1,6 +1,6 @@
 # GPX Similartity
 
-This projects tries to compare gpx routes (gpx files) and find similar segments in different routes. To compare the routes the routes are converted in a series of images via OpenStreetMap. The images are embedded using a neural network model. The distance between the embedded images is the 'similarity'.
+This projects tries to compare gpx routes (gpx files) and find similar segments in different routes. To compare the routes the routes are converted in a series of images via OpenStreetMap. The images are embedded using a neural network model (convolutional variational autoencoder). The similarity between segments is determined by the `Bhattacharyya distance` of the segments in the latent space of the autoencoder.
 
 Via this scripts all necessary steps can be run to build up a training database, train the embedding model, build up a reference database and runs comparisons. The embedding is independent from the comparisons you want to run, therefore the training has to be done once. You can find pretrained models in the repository https://github.com/mbrner/gpx_similarity/example.
 
